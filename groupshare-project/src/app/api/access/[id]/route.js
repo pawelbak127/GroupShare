@@ -16,8 +16,17 @@ export async function GET(request, { params }) {
     
     console.log(`Processing access request for purchase ${id}`);
     
+    // Specjalny przypadek dla bezpośredniego dostępu z panelu aplikacji
+    let directAccess = false;
+    if (token === 'direct') {
+      // Pomijamy weryfikację tokenu, bo dostęp jest z panelu aplikacji
+      // Nadal sprawdzamy czy użytkownik ma dostęp do zakupu
+      directAccess = true;
+      console.log(`Direct access requested for purchase ${id}`);
+    }
+    
     // Sprawdź czy token jest prawidłowy
-    if (!token) {
+    if (!token && !directAccess) {
       await logSecurityEvent(null, 'access_attempt', 'purchase_record', id, 'failed', {
         reason: 'Missing token',
         ip: request.headers.get('x-forwarded-for') || 'unknown'
@@ -89,74 +98,77 @@ export async function GET(request, { params }) {
       );
     }
     
-    // Pobierz i sprawdź token dostępu
-    const tokenHash = hashToken(token);
-    console.log(`Verifying token hash: ${tokenHash.substring(0, 10)}...`);
-    
-    // Najpierw sprawdź, czy istnieją jakiekolwiek tokeny dla tego zakupu
-    const { data: allTokens, error: tokensError } = await supabaseAdmin
-      .from('access_tokens')
-      .select('id, token_hash, expires_at, used')
-      .eq('purchase_record_id', id);
-    
-    if (tokensError) {
-      console.error('Error checking tokens:', tokensError);
-    } else {
-      console.log(`Found ${allTokens?.length || 0} tokens for purchase ${id}`);
-      if (allTokens && allTokens.length > 0) {
-        for (const t of allTokens) {
-          console.log(`Token: ${t.id}, hash prefix: ${t.token_hash?.substring(0, 10)}..., expires: ${t.expires_at}, used: ${t.used}`);
+    // Jeśli nie jest to dostęp bezpośredni, sprawdź token
+    if (!directAccess) {
+      // Pobierz i sprawdź token dostępu
+      const tokenHash = hashToken(token);
+      console.log(`Verifying token hash: ${tokenHash.substring(0, 10)}...`);
+      
+      // Najpierw sprawdź, czy istnieją jakiekolwiek tokeny dla tego zakupu
+      const { data: allTokens, error: tokensError } = await supabaseAdmin
+        .from('access_tokens')
+        .select('id, token_hash, expires_at, used')
+        .eq('purchase_record_id', id);
+      
+      if (tokensError) {
+        console.error('Error checking tokens:', tokensError);
+      } else {
+        console.log(`Found ${allTokens?.length || 0} tokens for purchase ${id}`);
+        if (allTokens && allTokens.length > 0) {
+          for (const t of allTokens) {
+            console.log(`Token: ${t.id}, hash prefix: ${t.token_hash?.substring(0, 10)}..., expires: ${t.expires_at}, used: ${t.used}`);
+          }
         }
       }
-    }
-    
-    // *** WAŻNA ZMIANA: Sprawdzaj wszystkie tokeny, nawet użyte ***
-    const { data: matchingToken, error: tokenError } = await supabaseAdmin
-      .from('access_tokens')
-      .select('*')
-      .eq('purchase_record_id', id)
-      .eq('token_hash', tokenHash)
-      .gt('expires_at', new Date().toISOString())
-      .maybeSingle();  // Używamy maybeSingle zamiast single, aby nie rzucać błędu jeśli nie znajdzie
-    
-    // Jeśli nie znaleziono pasującego tokenu lub token nie istnieje
-    if (tokenError || !matchingToken) {
-      console.error('Error finding matching token:', tokenError);
       
-      await logSecurityEvent(userProfileId, 'access_attempt', 'purchase_record', id, 'failed', {
-        reason: 'Token not found or expired',
-        error: tokenError?.message
-      });
-      
-      return NextResponse.json(
-        { error: 'Invalid or expired access token' },
-        { status: 401 }
-      );
-    }
-    
-    console.log(`Matching token found: ${matchingToken.id}, used: ${matchingToken.used}`);
-    
-    // Jeśli token został już użyty wcześniej, to akceptujemy to - po prostu nie oznaczamy go ponownie
-    if (!matchingToken.used) {
-      // Oznacz token jako użyty tylko jeśli jeszcze nie był użyty
-      const { error: updateError } = await supabaseAdmin
+      // *** WAŻNA ZMIANA: Sprawdzaj wszystkie tokeny, nawet użyte ***
+      const { data: matchingToken, error: tokenError } = await supabaseAdmin
         .from('access_tokens')
-        .update({
-          used: true,
-          used_at: new Date().toISOString(),
-          ip_address: request.headers.get('x-forwarded-for') || null,
-          user_agent: request.headers.get('user-agent') || null
-        })
-        .eq('id', matchingToken.id);
+        .select('*')
+        .eq('purchase_record_id', id)
+        .eq('token_hash', tokenHash)
+        .gt('expires_at', new Date().toISOString())
+        .maybeSingle();  // Używamy maybeSingle zamiast single, aby nie rzucać błędu jeśli nie znajdzie
       
-      if (updateError) {
-        console.error('Error updating access token:', updateError);
-        // Kontynuujemy pomimo błędu
-      } else {
-        console.log(`Token ${matchingToken.id} marked as used`);
+      // Jeśli nie znaleziono pasującego tokenu lub token nie istnieje
+      if (tokenError || !matchingToken) {
+        console.error('Error finding matching token:', tokenError);
+        
+        await logSecurityEvent(userProfileId, 'access_attempt', 'purchase_record', id, 'failed', {
+          reason: 'Token not found or expired',
+          error: tokenError?.message
+        });
+        
+        return NextResponse.json(
+          { error: 'Invalid or expired access token' },
+          { status: 401 }
+        );
       }
-    } else {
-      console.log(`Token ${matchingToken.id} was already used, continuing anyway`);
+      
+      console.log(`Matching token found: ${matchingToken.id}, used: ${matchingToken.used}`);
+      
+      // Jeśli token został już użyty wcześniej, to akceptujemy to - po prostu nie oznaczamy go ponownie
+      if (!matchingToken.used) {
+        // Oznacz token jako użyty tylko jeśli jeszcze nie był użyty
+        const { error: updateError } = await supabaseAdmin
+          .from('access_tokens')
+          .update({
+            used: true,
+            used_at: new Date().toISOString(),
+            ip_address: request.headers.get('x-forwarded-for') || null,
+            user_agent: request.headers.get('user-agent') || null
+          })
+          .eq('id', matchingToken.id);
+        
+        if (updateError) {
+          console.error('Error updating access token:', updateError);
+          // Kontynuujemy pomimo błędu
+        } else {
+          console.log(`Token ${matchingToken.id} marked as used`);
+        }
+      } else {
+        console.log(`Token ${matchingToken.id} was already used, continuing anyway`);
+      }
     }
     
     // Jeśli użytkownik jest zalogowany, sprawdź czy zakup należy do niego
@@ -241,7 +253,7 @@ export async function GET(request, { params }) {
     // Zaloguj udany dostęp
     await logSecurityEvent(userProfileId || purchase.user_id, 'access_success', 'purchase_record', id, 'success', {
       platform: purchase.group_sub.platform.name,
-      token_id: matchingToken.id,
+      token_id: directAccess ? 'direct_access' : matchingToken.id,
       has_instructions: !!accessInstructions
     });
     
@@ -256,7 +268,8 @@ export async function GET(request, { params }) {
       user: purchase.user.display_name,
       email: purchase.user.email,
       owner_contact: ownerContact,
-      has_instructions: !!accessInstructions
+      has_instructions: !!accessInstructions,
+      direct_access: directAccess
     });
   } catch (error) {
     console.error('Error processing access request:', error);

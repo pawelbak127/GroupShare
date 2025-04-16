@@ -44,8 +44,7 @@ export async function GET(request, { params }) {
         description,
         created_at,
         updated_at,
-        owner_id,
-        status
+        owner_id
       `)
       .eq('id', id)
       .single();
@@ -207,10 +206,6 @@ export async function PATCH(request, { params }) {
       updateData.description = updates.description?.trim() || null;
     }
     
-    if (updates.status && ['active', 'inactive', 'archived'].includes(updates.status)) {
-      updateData.status = updates.status;
-    }
-    
     // Aktualizuj grupę
     const { data: updatedGroup, error: updateError } = await supabaseAdmin
       .from('groups')
@@ -299,19 +294,16 @@ export async function DELETE(request, { params }) {
       );
     }
     
-    // Usuń grupę (w rzeczywistości oznacz jako usuniętą)
-    const { error: updateError } = await supabaseAdmin
+    // Usuń grupę
+    const { error: deleteError } = await supabaseAdmin
       .from('groups')
-      .update({
-        status: 'deleted',
-        updated_at: new Date().toISOString()
-      })
+      .delete()
       .eq('id', id);
     
-    if (updateError) {
-      console.error('Error deleting group:', updateError);
+    if (deleteError) {
+      console.error('Error deleting group:', deleteError);
       return NextResponse.json(
-        { error: 'Failed to delete group', details: updateError },
+        { error: 'Failed to delete group', details: deleteError },
         { status: 500 }
       );
     }

@@ -53,18 +53,16 @@ export default function Dashboard() {
         const applicationsData = await applicationsRes.json();
         setApplications(applicationsData);
 
-        // Pobierz oczekujące aplikacje (tylko dla właścicieli grup)
-        const pendingRes = await fetch('/api/applications/pending');
-        if (pendingRes.ok) {
-          const pendingData = await pendingRes.json();
-          setPendingApplications(pendingData);
-        }
-
         // Pobierz grupy użytkownika
         const groupsRes = await fetch('/api/groups');
         if (!groupsRes.ok) throw new Error('Failed to fetch groups');
         const groupsData = await groupsRes.json();
         setGroups(groupsData);
+        
+        // USUNIĘTO wywołanie nieistniejącego endpointu /api/applications/pending
+        // Zamiast tego inicjalizujemy pustą tablicę
+        setPendingApplications([]);
+        
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
         setError('Nie udało się pobrać wszystkich danych. Odśwież stronę, aby spróbować ponownie.');

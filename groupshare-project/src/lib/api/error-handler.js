@@ -1,5 +1,6 @@
 // src/lib/api/error-handler.js
 import { NextResponse } from 'next/server';
+import { currentUser } from '@clerk/nextjs/server'; // Dodaj ten import
 
 /**
  * Standardowa obsługa błędów API

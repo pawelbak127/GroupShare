@@ -47,8 +47,7 @@ export async function GET(request) {
           name,
           description,
           created_at,
-          owner_id,
-          status
+          owner_id
         `)
         .eq('owner_id', userProfile.id);
       
@@ -82,8 +81,7 @@ export async function GET(request) {
             name,
             description,
             created_at,
-            owner_id,
-            status
+            owner_id
           )
         `)
         .eq('user_id', userProfile.id)
@@ -189,10 +187,8 @@ export async function POST(request) {
       name: body.name.trim(),
       description: body.description?.trim() || null,
       owner_id: userProfile.id,
-      status: 'active',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
-      // Nie dodajemy pola privacy, bo nie istnieje w bazie danych
     };
     
     // Utwórz grupę
