@@ -75,26 +75,11 @@ export async function GET(request, { params }) {
         { status: 403 }
       );
     }
-    
-    // Pobierz członków grupy wraz z danymi profilowymi
+
+    // Podejście alternatywne - najpierw pobieramy członków bez zagnieżdżania
     const { data: members, error: membersError } = await supabaseAdmin
       .from('group_members')
-      .select(`
-        id,
-        user_id,
-        role,
-        status,
-        joined_at,
-        created_at,
-        user:user_profiles(
-          id,
-          display_name,
-          avatar_url,
-          email,
-          verification_level,
-          rating_avg
-        )
-      `)
+      .select('id, user_id, role, status, joined_at, created_at')
       .eq('group_id', groupId)
       .eq('status', 'active'); // tylko aktywni członkowie
     
@@ -105,14 +90,33 @@ export async function GET(request, { params }) {
         { status: 500 }
       );
     }
-    
-    // Zwróć listę członków z dodatkową informacją, czy to właściciel
-    const enrichedMembers = members.map(member => ({
-      ...member,
-      isOwner: member.user_id === group.owner_id
+
+    // Teraz pobieramy dane profilowe dla każdego członka osobno
+    const membersWithProfiles = await Promise.all(members.map(async (member) => {
+      const { data: userProfile, error: userError } = await supabaseAdmin
+        .from('user_profiles')
+        .select('id, display_name, avatar_url, email, verification_level, rating_avg')
+        .eq('id', member.user_id)
+        .single();
+      
+      if (userError) {
+        console.warn(`Error fetching profile for user ${member.user_id}:`, userError);
+        return {
+          ...member,
+          user: null,
+          isOwner: member.user_id === group.owner_id
+        };
+      }
+      
+      return {
+        ...member,
+        user: userProfile,
+        isOwner: member.user_id === group.owner_id
+      };
     }));
     
-    return NextResponse.json(enrichedMembers);
+    console.log(`Successfully fetched ${membersWithProfiles.length} members for group ${groupId}`);
+    return NextResponse.json(membersWithProfiles);
   } catch (error) {
     console.error('Unexpected error in GET /api/groups/[id]/members:', error);
     return NextResponse.json(
