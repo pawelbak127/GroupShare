@@ -13,7 +13,8 @@ const CreateOfferForm = ({ groupId, platforms = [] }) => {
     pricePerSlot: '',
     slotsTotal: '',
     currency: 'PLN',
-    accessInstructions: ''
+    accessInstructions: '',
+    durationMonths: '1' // Nowe pole z domyślną wartością 1 miesiąc
   });
   const [errors, setErrors] = useState({});
 
@@ -84,7 +85,8 @@ const CreateOfferForm = ({ groupId, platforms = [] }) => {
         pricePerSlot: parseFloat(formData.pricePerSlot),
         slotsTotal: parseInt(formData.slotsTotal),
         currency: formData.currency,
-        accessInstructions: formData.accessInstructions
+        accessInstructions: formData.accessInstructions,
+        durationMonths: parseInt(formData.durationMonths) // Dodaj nowe pole
       };
       
       // Wyślij dane do API
@@ -178,6 +180,18 @@ const CreateOfferForm = ({ groupId, platforms = [] }) => {
             { value: 'USD', label: 'USD - Dolar amerykański' }
           ]}
         />
+        <FormField
+  label="Czas trwania (miesiące)"
+  name="durationMonths"
+  type="number"
+  value={formData.durationMonths}
+  onChange={handleChange}
+  error={errors.durationMonths}
+  required
+  min="1"
+  max="24"
+  helper="Podaj jak długo będzie trwała subskrypcja (w miesiącach)"
+/>
         
         <FormField
           label="Instrukcje dostępowe"

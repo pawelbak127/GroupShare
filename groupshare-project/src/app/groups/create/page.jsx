@@ -12,7 +12,8 @@ export default function CreateGroupPage() {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    privacy: 'private'
+    privacy: 'private',
+    visibility: 'private' // Nowe pole
   });
   const [errors, setErrors] = useState({});
 
@@ -68,7 +69,8 @@ export default function CreateGroupPage() {
         body: JSON.stringify({
           name: formData.name.trim(),
           description: formData.description.trim(),
-          privacy: formData.privacy
+          privacy: formData.privacy,
+          visibility: formData.visibility
         })
       });
       
@@ -137,6 +139,21 @@ export default function CreateGroupPage() {
               { value: 'public', label: 'Publiczna - Każdy może zobaczyć i dołączyć do grupy' }
             ]}
             helper="Prywatne grupy są widoczne tylko dla członków. Publiczne grupy są widoczne dla wszystkich."
+          />
+          
+          <FormField
+            label="Widoczność grupy"
+            name="visibility"
+            type="select"
+            value={formData.visibility}
+            onChange={handleChange}
+            error={errors.visibility}
+            required
+            options={[
+              { value: 'private', label: 'Prywatna - Widoczna tylko dla członków' },
+              { value: 'public', label: 'Publiczna - Widoczna dla wszystkich' }
+            ]}
+            helper="Prywatne grupy wymagają zaproszenia. Publiczne grupy są widoczne dla wszystkich."
           />
           
           <div className="pt-5 border-t border-gray-200 flex justify-end space-x-3">

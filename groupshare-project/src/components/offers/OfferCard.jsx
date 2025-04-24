@@ -20,6 +20,32 @@ const OfferCard = ({ offer }) => {
   const { purchaseOffer } = useOffersApi();
   
   /**
+   * Oblicza pozostały czas subskrypcji
+   */
+  const calculateTimeRemaining = (expiresAt) => {
+    if (!expiresAt) return null;
+    
+    const expiryDate = new Date(expiresAt);
+    const now = new Date();
+    
+    // Jeśli data już minęła
+    if (expiryDate <= now) {
+      return { expired: true, text: 'Wygasło' };
+    }
+    
+    // Oblicz różnicę w dniach
+    const diffTime = expiryDate.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays > 30) {
+      const diffMonths = Math.floor(diffDays / 30);
+      return { expired: false, text: `${diffMonths} mies.` };
+    } else {
+      return { expired: false, text: `${diffDays} dni` };
+    }
+  };
+  
+  /**
    * Obsługuje proces zakupu oferty
    */
   const handlePurchase = async () => {
@@ -76,6 +102,13 @@ const OfferCard = ({ offer }) => {
           <span className="ml-3 px-2 py-0.5 bg-green-100 text-green-800 text-xs font-medium rounded-full">
             Natychmiastowy dostęp
           </span>
+
+          {/* Jeśli grupa jest prywatna, wyświetl informację */}
+          {offer.groups?.visibility === 'private' && (
+            <span className="ml-2 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">
+              Grupa prywatna
+            </span>
+          )}
         </div>
         
         <div className="mb-4">
@@ -91,6 +124,19 @@ const OfferCard = ({ offer }) => {
               {offer.slots_available} / {offer.slots_total}
             </span>
           </div>
+          {offer.expires_at && (
+            <div className="flex justify-between mb-1">
+              <span className="text-gray-600">Pozostały czas:</span>
+              {(() => {
+                const timeRemaining = calculateTimeRemaining(offer.expires_at);
+                return (
+                  <span className={`font-medium ${timeRemaining?.expired ? 'text-red-600' : 'text-green-600'}`}>
+                    {timeRemaining?.text || 'Nie określono'}
+                  </span>
+                );
+              })()}
+            </div>
+          )}
         </div>
       </div>
       

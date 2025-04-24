@@ -13,7 +13,8 @@ const createOfferSchema = {
   slotsTotal: { required: true, type: 'number', min: 1 },
   pricePerSlot: { required: true, type: 'number', min: 0.01 },
   accessInstructions: { required: true, minLength: 10 },
-  currency: { type: 'string' }
+  currency: { type: 'string' },
+  durationMonths: { type: 'number', min: 1, max: 24 }
 };
 
 /**
@@ -37,7 +38,8 @@ export async function GET(request) {
       orderBy: searchParams.get('orderBy') || 'created_at',
       ascending: searchParams.get('ascending') === 'true',
       limit: searchParams.get('limit') ? parseInt(searchParams.get('limit')) : 20,
-      page: searchParams.get('page') ? parseInt(searchParams.get('page')) : 1
+      page: searchParams.get('page') ? parseInt(searchParams.get('page')) : 1,
+      showPrivate: searchParams.get('showPrivate') === 'true', // Nowy filtr
     };
     
     console.log('Processed filters:', filters);
@@ -45,18 +47,60 @@ export async function GET(request) {
     // Oblicz offset na podstawie strony i limitu
     filters.offset = (filters.page - 1) * filters.limit;
     
+    // Pobierz zalogowanego użytkownika
+    let userProfileId = null;
+    let userGroups = [];
+    const user = await currentUser();
+    
+    if (user) {
+      // Pobierz profil użytkownika
+      const { data: userProfile } = await supabaseAdmin
+        .from('user_profiles')
+        .select('id')
+        .eq('external_auth_id', user.id)
+        .maybeSingle();
+      
+      if (userProfile) {
+        userProfileId = userProfile.id;
+        
+        // Pobierz grupy, do których należy użytkownik
+        const { data: memberGroups } = await supabaseAdmin
+          .from('group_members')
+          .select('group_id')
+          .eq('user_id', userProfileId)
+          .eq('status', 'active');
+        
+        if (memberGroups && memberGroups.length > 0) {
+          userGroups = memberGroups.map(group => group.group_id);
+        }
+        
+        console.log(`User ${userProfileId} is a member of ${userGroups.length} groups`);
+      }
+    }
+    
     // Zbuduj zapytanie bazowe
     let query = supabaseAdmin
       .from('group_subs')
       .select(`
         *,
         subscription_platforms(*),
-        groups(id, name),
+        groups(id, name, visibility),
         owner:groups!inner(owner_id, user_profiles!inner(id, display_name, avatar_url, rating_avg, rating_count, verification_level))
       `)
       .eq('status', 'active');
     
-    // Zastosuj filtry
+    // Filtrowanie widoczności grup
+    if (userGroups.length > 0) {
+      // Dla zalogowanych użytkowników pokazujemy oferty z:
+      // 1. Grup publicznych LUB
+      // 2. Prywatnych grup, do których należą
+      query = query.or(`groups.visibility.eq.public,groups.id.in.(${userGroups.join(',')})`);
+    } else {
+      // Dla niezalogowanych pokazujemy tylko oferty z publicznych grup
+      query = query.eq('groups.visibility', 'public');
+    }
+    
+    // Zastosuj pozostałe filtry
     if (filters.platformId) {
       query = query.eq('platform_id', filters.platformId);
     }
@@ -152,6 +196,8 @@ export async function POST(request) {
         slots_available: body.slotsTotal,
         price_per_slot: body.pricePerSlot,
         currency: body.currency || 'PLN',
+        duration_months: body.durationMonths || 1,
+        expires_at: calculateExpiryDate(body.durationMonths || 1),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -178,7 +224,7 @@ export async function POST(request) {
 }
 
 /**
- * Sprawdza uprawnienia użytkownika w grupie
+ * Sprawdza uprawnienia użytkownika do grupy
  * @param {string} groupId - ID grupy
  * @param {string} userId - ID użytkownika
  * @returns {Promise<boolean>} - Czy użytkownik ma uprawnienia
@@ -326,4 +372,15 @@ function generateRandomBytes(size) {
       return String.fromCharCode.apply(null, values);
     }
   };
+}
+
+/**
+ * Oblicza datę wygaśnięcia na podstawie liczby miesięcy
+ * @param {number} durationMonths - Liczba miesięcy
+ * @returns {string} - Data wygaśnięcia w formacie ISO
+ */
+function calculateExpiryDate(durationMonths) {
+  const expiryDate = new Date();
+  expiryDate.setMonth(expiryDate.getMonth() + parseInt(durationMonths));
+  return expiryDate.toISOString();
 }
