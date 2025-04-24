@@ -168,3 +168,4 @@ export default function JoinGroupPage() {
     </div>
   );
 }
+export const dynamic = 'force-dynamic';

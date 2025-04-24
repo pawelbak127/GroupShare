@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 // src/app/api/groups/invitations/verify/route.js
 import { NextResponse } from 'next/server';
 import supabaseAdmin from '@/lib/database/supabase-admin-client';

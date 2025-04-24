@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 // src/app/api/groups/user-groups/route.js
 import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
