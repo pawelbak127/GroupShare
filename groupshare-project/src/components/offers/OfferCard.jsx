@@ -76,6 +76,8 @@ const OfferCard = ({ offer }) => {
     }
   };
   
+  const timeRemaining = offer.expires_at ? calculateTimeRemaining(offer.expires_at) : null;
+  
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
       {/* Treść karty z informacjami o ofercie */}
@@ -124,17 +126,21 @@ const OfferCard = ({ offer }) => {
               {offer.slots_available} / {offer.slots_total}
             </span>
           </div>
-          {offer.expires_at && (
+          {timeRemaining && (
             <div className="flex justify-between mb-1">
               <span className="text-gray-600">Pozostały czas:</span>
-              {(() => {
-                const timeRemaining = calculateTimeRemaining(offer.expires_at);
-                return (
-                  <span className={`font-medium ${timeRemaining?.expired ? 'text-red-600' : 'text-green-600'}`}>
-                    {timeRemaining?.text || 'Nie określono'}
-                  </span>
-                );
-              })()}
+              <span className={`font-medium ${timeRemaining.expired ? 'text-red-600' : 'text-green-600'}`}>
+                {timeRemaining.text}
+              </span>
+            </div>
+          )}
+          {offer.duration_months && (
+            <div className="flex justify-between mb-1">
+              <span className="text-gray-600">Czas trwania:</span>
+              <span className="font-medium text-gray-900">
+                {offer.duration_months} {offer.duration_months === 1 ? 'miesiąc' : 
+                 offer.duration_months < 5 ? 'miesiące' : 'miesięcy'}
+              </span>
             </div>
           )}
         </div>

@@ -13,7 +13,7 @@ export default function CreateGroupPage() {
     name: '',
     description: '',
     privacy: 'private',
-    visibility: 'private' // Nowe pole
+    visibility: 'private' // Domyślnie prywatna
   });
   const [errors, setErrors] = useState({});
 

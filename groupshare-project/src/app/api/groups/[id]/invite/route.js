@@ -136,8 +136,8 @@ export async function POST(request, { params }) {
             .update({
               status: 'invited',
               role: role,
-              invited_by: userProfile.id,
-              updated_at: new Date().toISOString()
+              invited_by: userProfile.id
+              // Usunięto: updated_at: new Date().toISOString()
             })
             .eq('id', existingMember.id);
           
@@ -170,8 +170,8 @@ export async function POST(request, { params }) {
           role: role,
           status: 'invited',
           invited_by: userProfile.id,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          created_at: new Date().toISOString()
+          // Usunięto: updated_at: new Date().toISOString()
         })
         .select('id')
         .single();
@@ -211,7 +211,7 @@ export async function POST(request, { params }) {
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // Ważne przez 7 dni
         status: 'pending',
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString() // Zachowano, bo w tabeli group_invitations ta kolumna istnieje
       })
       .select('id')
       .single();
@@ -226,6 +226,7 @@ export async function POST(request, { params }) {
     
     // W tym miejscu wysłalibyśmy email z zaproszeniem w rzeczywistej aplikacji
     // const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invitation/${inviteCode}`;
+    const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/groups/join?code=${inviteCode}`;
     
     // Zaloguj akcję
     await supabaseAdmin
@@ -239,7 +240,8 @@ export async function POST(request, { params }) {
         details: {
           invited_email: email,
           role: role,
-          invitation_id: invitation.id
+          invitation_id: invitation.id,
+          invite_url: inviteUrl
         },
         created_at: new Date().toISOString()
       });
@@ -249,7 +251,8 @@ export async function POST(request, { params }) {
       invitedUser: {
         email,
         status: 'pending',
-        inviteId: invitation.id
+        inviteId: invitation.id,
+        inviteUrl: inviteUrl
       }
     });
   } catch (error) {

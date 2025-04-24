@@ -295,9 +295,9 @@ export async function POST(request) {
       description: body.description?.trim() || null,
       owner_id: userProfile.id,
       status: 'active',
+      visibility: body.visibility || 'private', // Dodanie pola visibility
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
-      // Nie dodajemy pola privacy, bo nie istnieje w bazie danych
     };
     
     // Utwórz grupę

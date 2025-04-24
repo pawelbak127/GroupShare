@@ -18,6 +18,34 @@ export default function PurchaseDetailsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isGeneratingToken, setIsGeneratingToken] = useState(false);
   const [error, setError] = useState(null);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
+
+
+// Dodaj funkcję do regeneracji tokenu
+
+const regenerateAccessToken = async () => {
+    try {
+      setIsGeneratingToken(true);
+      
+      const response = await fetch(`/api/purchases/${id}/regenerate-token`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to regenerate access token');
+      }
+      
+      const data = await response.json();
+      setAccessToken(data);
+      toast.success('Token został ponownie wygenerowany');
+    } catch (err) {
+      console.error('Error regenerating access token:', err);
+      toast.error('Nie udało się ponownie wygenerować tokenu dostępu');
+    } finally {
+      setIsGeneratingToken(false);
+    }
+  };
 
   // Pobieranie danych zakupu
   useEffect(() => {
@@ -210,29 +238,29 @@ export default function PurchaseDetailsPage() {
                 </p>
                 
                 {accessToken ? (
-                  <div className="bg-green-50 border border-green-200 rounded-md p-4 mb-4">
-                    <h3 className="text-sm font-medium text-green-800 mb-1">Token został wygenerowany</h3>
-                    <p className="text-xs text-green-700 mb-2">
-                      Ten link jest ważny przez 30 minut i może być użyty tylko raz.
-                    </p>
-                    <div className="flex items-center">
-                      <input
-                        type="text"
-                        className="flex-grow rounded-l-md border border-gray-300 px-3 py-2 shadow-sm text-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
-                        value={accessToken.accessUrl}
-                        readOnly
-                      />
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(accessToken.accessUrl);
-                          toast.success('Link skopiowany do schowka');
-                        }}
-                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-r-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                      >
-                        Kopiuj
-                      </button>
-                    </div>
-                    <div className="mt-3">
+  <div className="bg-green-50 border border-green-200 rounded-md p-4 mb-4">
+    <h3 className="text-sm font-medium text-green-800 mb-1">Token został wygenerowany</h3>
+    <p className="text-xs text-green-700 mb-2">
+      Ten link jest ważny przez 60 minut i może być użyty tylko raz.
+    </p>
+    <div className="flex items-center">
+      <input
+        type="text"
+        className="flex-grow rounded-l-md border border-gray-300 px-3 py-2 shadow-sm text-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
+        value={accessToken.accessUrl}
+        readOnly
+      />
+      <button
+        onClick={() => {
+          navigator.clipboard.writeText(accessToken.accessUrl);
+          toast.success('Link skopiowany do schowka');
+        }}
+        className="inline-flex items-center px-4 py-2 border border-transparent rounded-r-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+      >
+        Kopiuj
+      </button>
+    </div>
+    <div className="mt-3 flex space-x-3">
                       <a
                         href={accessToken.accessUrl}
                         target="_blank"
@@ -241,6 +269,15 @@ export default function PurchaseDetailsPage() {
                       >
                         Przejdź do instrukcji dostępu
                       </a>
+                      <button
+                        onClick={regenerateAccessToken}
+                        disabled={isGeneratingToken}
+                        className={`inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+                          isGeneratingToken ? 'opacity-70 cursor-wait' : ''
+                        }`}
+                      >
+                        {isGeneratingToken ? 'Regeneracja...' : 'Regeneruj token'}
+                      </button>
                     </div>
                   </div>
                 ) : (

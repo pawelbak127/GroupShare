@@ -20,10 +20,17 @@ export default function GroupInvitePage() {
   const [isSending, setIsSending] = useState(false);
   const [inviteLink, setInviteLink] = useState('');
   
-  // Pobierz dane grupy po załadowaniu
+// Update the invite link generation
+const generateInviteLink = () => {
+    const baseUrl = window.location.origin;
+    const inviteCode = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+    
+    return `${baseUrl}/groups/join?code=${inviteCode}`;
+  };
+  
   useEffect(() => {
     if (!isLoaded || !user || !groupId) return;
-
+  
     const fetchGroupData = async () => {
       try {
         setIsLoading(true);
@@ -38,9 +45,10 @@ export default function GroupInvitePage() {
         const groupData = await groupResponse.json();
         setGroup(groupData);
         
-        // Generuj link zapraszający
+        // Generuj link zapraszający - używamy poprawnego formatu
+        const inviteCode = `${groupId}-${Date.now()}`;
         const baseUrl = window.location.origin;
-        setInviteLink(`${baseUrl}/groups/join?code=${groupId}-${Date.now()}`);
+        setInviteLink(`${baseUrl}/groups/join?code=${inviteCode}`);
         
       } catch (err) {
         console.error('Error fetching group data:', err);

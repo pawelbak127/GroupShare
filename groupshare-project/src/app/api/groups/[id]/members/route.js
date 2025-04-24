@@ -258,7 +258,6 @@ export async function POST(request, { params }) {
             status: 'active',
             role: role,
             joined_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
           })
           .eq('id', existingMember.id)
           .select()
@@ -292,7 +291,6 @@ export async function POST(request, { params }) {
         invited_by: userProfile.id,
         joined_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
       })
       .select()
       .single();
@@ -420,7 +418,6 @@ export async function DELETE(request, { params }) {
       .from('group_members')
       .update({
         status: 'removed',
-        updated_at: new Date().toISOString()
       })
       .eq('id', memberId);
     
@@ -550,7 +547,6 @@ export async function PATCH(request, { params }) {
       .from('group_members')
       .update({
         role: role,
-        updated_at: new Date().toISOString()
       })
       .eq('id', memberId)
       .select()

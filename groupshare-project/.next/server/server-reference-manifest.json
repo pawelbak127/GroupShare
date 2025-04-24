@@ -3,44 +3,52 @@
     "4c336a011400a5dc391a42026ea72f136a5e8cc2": {
       "workers": {
         "app/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%22deleteKeylessAction%22%2C%22syncKeylessConfigAction%22%2C%22createOrReadKeylessAction%22%5D%5D%5D&__client_imported__=!",
-        "app/offers/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%22deleteKeylessAction%22%2C%22syncKeylessConfigAction%22%2C%22createOrReadKeylessAction%22%5D%5D%5D&__client_imported__=!"
+        "app/offers/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%22deleteKeylessAction%22%2C%22syncKeylessConfigAction%22%2C%22createOrReadKeylessAction%22%5D%5D%5D&__client_imported__=!",
+        "app/sign-in/[[...rest]]/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%22deleteKeylessAction%22%2C%22syncKeylessConfigAction%22%2C%22createOrReadKeylessAction%22%5D%5D%5D&__client_imported__=!"
       },
       "layer": {
         "app/page": "rsc",
-        "app/offers/page": "rsc"
+        "app/offers/page": "rsc",
+        "app/sign-in/[[...rest]]/page": "rsc"
       }
     },
     "9360faa825b0a04081aebc0db4ce10c84bd6ac00": {
       "workers": {
         "app/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%22deleteKeylessAction%22%2C%22syncKeylessConfigAction%22%2C%22createOrReadKeylessAction%22%5D%5D%5D&__client_imported__=!",
-        "app/offers/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%22deleteKeylessAction%22%2C%22syncKeylessConfigAction%22%2C%22createOrReadKeylessAction%22%5D%5D%5D&__client_imported__=!"
+        "app/offers/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%22deleteKeylessAction%22%2C%22syncKeylessConfigAction%22%2C%22createOrReadKeylessAction%22%5D%5D%5D&__client_imported__=!",
+        "app/sign-in/[[...rest]]/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%22deleteKeylessAction%22%2C%22syncKeylessConfigAction%22%2C%22createOrReadKeylessAction%22%5D%5D%5D&__client_imported__=!"
       },
       "layer": {
         "app/page": "rsc",
-        "app/offers/page": "rsc"
+        "app/offers/page": "rsc",
+        "app/sign-in/[[...rest]]/page": "rsc"
       }
     },
     "ba86b2fd4bfb3ce9f009d469c8492767b3f6bd85": {
       "workers": {
         "app/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%22deleteKeylessAction%22%2C%22syncKeylessConfigAction%22%2C%22createOrReadKeylessAction%22%5D%5D%5D&__client_imported__=!",
-        "app/offers/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%22deleteKeylessAction%22%2C%22syncKeylessConfigAction%22%2C%22createOrReadKeylessAction%22%5D%5D%5D&__client_imported__=!"
+        "app/offers/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%22deleteKeylessAction%22%2C%22syncKeylessConfigAction%22%2C%22createOrReadKeylessAction%22%5D%5D%5D&__client_imported__=!",
+        "app/sign-in/[[...rest]]/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%22deleteKeylessAction%22%2C%22syncKeylessConfigAction%22%2C%22createOrReadKeylessAction%22%5D%5D%5D&__client_imported__=!"
       },
       "layer": {
         "app/page": "rsc",
-        "app/offers/page": "rsc"
+        "app/offers/page": "rsc",
+        "app/sign-in/[[...rest]]/page": "rsc"
       }
     },
     "014cf914c41c6b311ba0f9439d0e682764dafb3d": {
       "workers": {
         "app/page": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Cserver-actions.js%22%2C%5B%22invalidateCacheAction%22%5D%5D%5D&__client_imported__=true!",
-        "app/offers/page": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Cserver-actions.js%22%2C%5B%22invalidateCacheAction%22%5D%5D%5D&__client_imported__=true!"
+        "app/offers/page": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Cserver-actions.js%22%2C%5B%22invalidateCacheAction%22%5D%5D%5D&__client_imported__=true!",
+        "app/sign-in/[[...rest]]/page": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cbacze%5C%5CProject%5C%5CGroupShare%5C%5Cgroupshare-project%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Cserver-actions.js%22%2C%5B%22invalidateCacheAction%22%5D%5D%5D&__client_imported__=true!"
       },
       "layer": {
         "app/page": "action-browser",
-        "app/offers/page": "action-browser"
+        "app/offers/page": "action-browser",
+        "app/sign-in/[[...rest]]/page": "action-browser"
       }
     }
   },
   "edge": {},
-  "encryptionKey": "F9d/n9vfPWMnzbXnP9QxYOOjvfGBAyr9EFbyX/91Dow="
+  "encryptionKey": "OQYmmkKSiFKiBjDi/fMDYhm1c5JSk21X8ZLEJlm5cxI="
 }

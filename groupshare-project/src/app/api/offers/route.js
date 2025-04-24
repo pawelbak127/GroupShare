@@ -38,11 +38,8 @@ export async function GET(request) {
       orderBy: searchParams.get('orderBy') || 'created_at',
       ascending: searchParams.get('ascending') === 'true',
       limit: searchParams.get('limit') ? parseInt(searchParams.get('limit')) : 20,
-      page: searchParams.get('page') ? parseInt(searchParams.get('page')) : 1,
-      showPrivate: searchParams.get('showPrivate') === 'true', // Nowy filtr
+      page: searchParams.get('page') ? parseInt(searchParams.get('page')) : 1
     };
-    
-    console.log('Processed filters:', filters);
     
     // Oblicz offset na podstawie strony i limitu
     filters.offset = (filters.page - 1) * filters.limit;
@@ -89,7 +86,7 @@ export async function GET(request) {
       `)
       .eq('status', 'active');
     
-    // Filtrowanie widoczności grup
+    // Filtrowanie widoczności grup - KLUCZOWA ZMIANA
     if (userGroups.length > 0) {
       // Dla zalogowanych użytkowników pokazujemy oferty z:
       // 1. Grup publicznych LUB

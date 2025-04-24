@@ -14,7 +14,7 @@ const CreateOfferForm = ({ groupId, platforms = [] }) => {
     slotsTotal: '',
     currency: 'PLN',
     accessInstructions: '',
-    durationMonths: '1' // Nowe pole z domyślną wartością 1 miesiąc
+    durationMonths: '1' // Wartość domyślna
   });
   const [errors, setErrors] = useState({});
 
@@ -42,6 +42,12 @@ const CreateOfferForm = ({ groupId, platforms = [] }) => {
       newErrors.accessInstructions = 'Wprowadź instrukcje dostępowe';
     } else if (formData.accessInstructions.trim().length < 10) {
       newErrors.accessInstructions = 'Instrukcje dostępowe są zbyt krótkie (minimum 10 znaków)';
+    }
+    
+    if (!formData.durationMonths) {
+      newErrors.durationMonths = 'Wybierz czas trwania subskrypcji';
+    } else if (isNaN(formData.durationMonths) || parseInt(formData.durationMonths) <= 0) {
+      newErrors.durationMonths = 'Czas trwania musi być liczbą większą od zera';
     }
     
     setErrors(newErrors);
@@ -86,7 +92,7 @@ const CreateOfferForm = ({ groupId, platforms = [] }) => {
         slotsTotal: parseInt(formData.slotsTotal),
         currency: formData.currency,
         accessInstructions: formData.accessInstructions,
-        durationMonths: parseInt(formData.durationMonths) // Dodaj nowe pole
+        durationMonths: parseInt(formData.durationMonths) // Dodajemy czas trwania
       };
       
       // Wyślij dane do API
@@ -166,32 +172,40 @@ const CreateOfferForm = ({ groupId, platforms = [] }) => {
           />
         </div>
         
-        <FormField
-          label="Waluta"
-          name="currency"
-          type="select"
-          value={formData.currency}
-          onChange={handleChange}
-          error={errors.currency}
-          required
-          options={[
-            { value: 'PLN', label: 'PLN - Polski złoty' },
-            { value: 'EUR', label: 'EUR - Euro' },
-            { value: 'USD', label: 'USD - Dolar amerykański' }
-          ]}
-        />
-        <FormField
-  label="Czas trwania (miesiące)"
-  name="durationMonths"
-  type="number"
-  value={formData.durationMonths}
-  onChange={handleChange}
-  error={errors.durationMonths}
-  required
-  min="1"
-  max="24"
-  helper="Podaj jak długo będzie trwała subskrypcja (w miesiącach)"
-/>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <FormField
+            label="Waluta"
+            name="currency"
+            type="select"
+            value={formData.currency}
+            onChange={handleChange}
+            error={errors.currency}
+            required
+            options={[
+              { value: 'PLN', label: 'PLN - Polski złoty' },
+              { value: 'EUR', label: 'EUR - Euro' },
+              { value: 'USD', label: 'USD - Dolar amerykański' }
+            ]}
+          />
+          
+          <FormField
+            label="Czas trwania (miesiące)"
+            name="durationMonths"
+            type="select"
+            value={formData.durationMonths}
+            onChange={handleChange}
+            error={errors.durationMonths}
+            required
+            options={[
+              { value: '1', label: '1 miesiąc' },
+              { value: '3', label: '3 miesiące' },
+              { value: '6', label: '6 miesięcy' },
+              { value: '12', label: '12 miesięcy (1 rok)' },
+              { value: '24', label: '24 miesiące (2 lata)' }
+            ]}
+            helper="Określa jak długo będzie trwała subskrypcja"
+          />
+        </div>
         
         <FormField
           label="Instrukcje dostępowe"
