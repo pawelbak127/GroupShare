@@ -1,55 +1,59 @@
 // src/lib/api/error-handler.js
 import { NextResponse } from 'next/server';
+import { currentUser } from '@clerk/nextjs/server';
 
 /**
  * Standardowa obsługa błędów API
  * @param {Error} error - Obiekt błędu
- * @param {number} defaultStatus - Domyślny kod statusu HTTP (opcjonalny, domyślnie 500)
+ * @param {string|null} message - Opcjonalny komunikat błędu
+ * @param {number} status - Kod statusu HTTP (opcjonalny, domyślnie 500)
  * @returns {NextResponse} - Ujednolicona odpowiedź błędu
  */
-export function handleApiError(error, defaultStatus = 500) {
+export function handleApiError(error, message = null, status = 500) {
   console.error('API error:', error);
   
-  // Określ szczegóły błędu na podstawie typu
-  let status = defaultStatus;
-  let message = error.message || 'Wystąpił nieoczekiwany błąd';
-  let code = error.code || 'unknown_error';
+  // Upewnij się, że status jest liczbą w zakresie 200-599
+  let statusCode = status;
+  if (typeof statusCode !== 'number' || statusCode < 200 || statusCode > 599) {
+    console.warn(`Invalid status code: ${statusCode}, defaulting to 500`);
+    statusCode = 500;
+  }
+  
+  // Ustal szczegóły błędu
+  let errorMessage = message || error.message || 'Wystąpił nieoczekiwany błąd';
+  let errorCode = error.code || 'unknown_error';
   let details = error.details || null;
   
   // Obsługa standardowych kodów błędów Supabase
   if (error.code === 'PGRST116') {
-    // Nie znaleziono rekordu - kod 404
-    status = 404;
-    message = 'Żądany zasób nie został znaleziony';
-    code = 'not_found';
+    statusCode = 404;
+    errorMessage = message || 'Żądany zasób nie został znaleziony';
+    errorCode = 'not_found';
   } else if (error.code === '42501') {
-    // Brak uprawnień - kod 403
-    status = 403;
-    message = 'Brak uprawnień do wykonania tej operacji';
-    code = 'permission_denied';
+    statusCode = 403;
+    errorMessage = message || 'Brak uprawnień do wykonania tej operacji';
+    errorCode = 'permission_denied';
   } else if (error.code === '23505') {
-    // Konflikt unikalności - kod 409
-    status = 409;
-    message = 'Zasób o podanych danych już istnieje';
-    code = 'resource_conflict';
+    statusCode = 409;
+    errorMessage = message || 'Zasób o podanych danych już istnieje';
+    errorCode = 'resource_conflict';
   } else if (error.code === '23502') {
-    // Brak wymaganego pola - kod 400
-    status = 400;
-    message = 'Brak wymaganego pola';
-    code = 'missing_required_field';
+    statusCode = 400;
+    errorMessage = message || 'Brak wymaganego pola';
+    errorCode = 'missing_required_field';
   }
   
   // Zwróć ustandaryzowaną odpowiedź błędu
   return NextResponse.json(
     { 
       error: true, 
-      message, 
-      code, 
+      message: errorMessage, 
+      code: errorCode, 
       details, 
       timestamp: new Date().toISOString(),
       data: [] // Dodano pustą tablicę dla kompatybilności z klientem
     }, 
-    { status }
+    { status: statusCode }
   );
 }
 
@@ -61,6 +65,12 @@ export function handleApiError(error, defaultStatus = 500) {
  * @returns {NextResponse} - Ujednolicona odpowiedź sukcesu
  */
 export function apiResponse(data, status = 200, message = null) {
+  // Upewnij się, że status jest liczbą w zakresie 200-599
+  if (typeof status !== 'number' || status < 200 || status > 599) {
+    console.warn(`Invalid status code: ${status}, defaulting to 200`);
+    status = 200;
+  }
+  
   // Jeśli dane są null lub undefined, zwróć pustą tablicę
   const sanitizedData = data === null || data === undefined ? [] : data;
   

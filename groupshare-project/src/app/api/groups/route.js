@@ -20,17 +20,76 @@ export async function GET(request) {
     
     console.log('Fetching groups for user:', user.id);
     
-    // Pobierz profil użytkownika
-    const { data: userProfile, error: profileError } = await supabaseAdmin
-      .from('user_profiles')
-      .select('id')
-      .eq('external_auth_id', user.id)
-      .single();
+    // Pobierz lub utwórz profil użytkownika
+    let userProfile = null;
     
-    if (profileError) {
-      console.error('Error fetching user profile:', profileError);
+    try {
+      // Próba pobrania profilu
+      const { data: existingProfile, error: profileError } = await supabaseAdmin
+        .from('user_profiles')
+        .select('id')
+        .eq('external_auth_id', user.id)
+        .maybeSingle(); // Używamy maybeSingle zamiast single!
+      
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('Error fetching user profile:', profileError);
+        return NextResponse.json(
+          { error: 'Failed to fetch user profile', details: profileError },
+          { status: 500 }
+        );
+      }
+      
+      // Jeśli znaleziono profil, użyj go
+      if (existingProfile) {
+        userProfile = existingProfile;
+        console.log('Found existing user profile:', userProfile.id);
+      } else {
+        // Jeśli nie znaleziono profilu, utwórz nowy
+        console.log('Creating new user profile for:', user.id);
+        
+        // Przygotuj dane nowego profilu
+        const newProfileData = {
+          external_auth_id: user.id,
+          display_name: user.firstName 
+            ? `${user.firstName} ${user.lastName || ''}`.trim() 
+            : (user.username || 'Nowy użytkownik'),
+          email: user.emailAddresses[0]?.emailAddress || '',
+          profile_type: 'both',
+          verification_level: 'basic',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        
+        // Utwórz nowy profil
+        const { data: newProfile, error: createError } = await supabaseAdmin
+          .from('user_profiles')
+          .insert([newProfileData])
+          .select('id')
+          .single();
+          
+        if (createError) {
+          console.error('Error creating user profile:', createError);
+          return NextResponse.json(
+            { error: 'Failed to create user profile', details: createError },
+            { status: 500 }
+          );
+        }
+        
+        userProfile = newProfile;
+        console.log('Created new user profile:', userProfile.id);
+      }
+    } catch (error) {
+      console.error('Exception fetching/creating user profile:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch user profile', details: profileError },
+        { error: 'Failed to process user profile', details: error.message },
+        { status: 500 }
+      );
+    }
+    
+    if (!userProfile || !userProfile.id) {
+      console.error('No user profile available after profile handling');
+      return NextResponse.json(
+        { error: 'User profile not available', details: 'Profile processing failed' },
         { status: 500 }
       );
     }
@@ -169,17 +228,63 @@ export async function POST(request) {
       );
     }
     
-    // Pobierz profil użytkownika
-    const { data: userProfile, error: profileError } = await supabaseAdmin
-      .from('user_profiles')
-      .select('id')
-      .eq('external_auth_id', user.id)
-      .single();
+    // Pobierz lub utwórz profil użytkownika
+    let userProfile = null;
     
-    if (profileError) {
-      console.error('Error fetching user profile:', profileError);
+    try {
+      // Próba pobrania profilu
+      const { data: existingProfile, error: profileError } = await supabaseAdmin
+        .from('user_profiles')
+        .select('id')
+        .eq('external_auth_id', user.id)
+        .maybeSingle(); // Używamy maybeSingle zamiast single!
+      
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('Error fetching user profile:', profileError);
+        return NextResponse.json(
+          { error: 'Failed to fetch user profile', details: profileError },
+          { status: 500 }
+        );
+      }
+      
+      // Jeśli znaleziono profil, użyj go
+      if (existingProfile) {
+        userProfile = existingProfile;
+      } else {
+        // Jeśli nie znaleziono profilu, utwórz nowy
+        const newProfileData = {
+          external_auth_id: user.id,
+          display_name: user.firstName 
+            ? `${user.firstName} ${user.lastName || ''}`.trim() 
+            : (user.username || 'Nowy użytkownik'),
+          email: user.emailAddresses[0]?.emailAddress || '',
+          profile_type: 'both',
+          verification_level: 'basic',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        
+        // Utwórz nowy profil
+        const { data: newProfile, error: createError } = await supabaseAdmin
+          .from('user_profiles')
+          .insert([newProfileData])
+          .select('id')
+          .single();
+          
+        if (createError) {
+          console.error('Error creating user profile:', createError);
+          return NextResponse.json(
+            { error: 'Failed to create user profile', details: createError },
+            { status: 500 }
+          );
+        }
+        
+        userProfile = newProfile;
+      }
+    } catch (error) {
+      console.error('Exception fetching/creating user profile:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch user profile', details: profileError },
+        { error: 'Failed to process user profile', details: error.message },
         { status: 500 }
       );
     }

@@ -1,8 +1,16 @@
 {
-  "/offers/page": "app/offers/page.js",
-  "/access/page": "app/access/page.js",
-  "/groups/page": "app/groups/page.js",
-  "/groups/[id]/page": "app/groups/[id]/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
   "/dashboard/page": "app/dashboard/page.js",
-  "/api/groups/route": "app/api/groups/route.js"
+  "/api/groups/route": "app/api/groups/route.js",
+  "/groups/page": "app/groups/page.js",
+  "/applications/page": "app/applications/page.js",
+  "/groups/[id]/page": "app/groups/[id]/page.js",
+  "/api/groups/[id]/route": "app/api/groups/[id]/route.js",
+  "/api/groups/[id]/members/route": "app/api/groups/[id]/members/route.js",
+  "/api/groups/[id]/subscriptions/route": "app/api/groups/[id]/subscriptions/route.js",
+  "/groups/[id]/offers/[offerId]/edit/page": "app/groups/[id]/offers/[offerId]/edit/page.js",
+  "/api/platforms/route": "app/api/platforms/route.js",
+  "/api/offers/[id]/route": "app/api/offers/[id]/route.js",
+  "/offers/page": "app/offers/page.js",
+  "/api/offers/route": "app/api/offers/route.js"
 }

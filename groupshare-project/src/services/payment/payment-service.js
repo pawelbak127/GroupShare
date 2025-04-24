@@ -2,6 +2,7 @@
 import supabaseAdmin from '@/lib/database/supabase-admin-client';
 import { tokenService } from '@/lib/security/token-service';
 import { offerService } from '../offer/offer-service';
+import crypto from 'crypto';
 
 /**
  * Serwis płatności - zarządza procesem płatności i dostępu do subskrypcji
@@ -20,12 +21,12 @@ export class PaymentService {
   }
 
   /**
- * Bezpieczne zmniejszenie liczby dostępnych miejsc w ofercie
- * Nie rzuca błędu, jeśli nie ma miejsc do zmniejszenia
- * @param {string} offerId - ID oferty
- * @returns {Promise<boolean>} - Czy operacja się powiodła
- */
-async safeDecrementAvailableSlots(offerId) {
+   * Bezpieczne zmniejszenie liczby dostępnych miejsc w ofercie
+   * Nie rzuca błędu, jeśli nie ma miejsc do zmniejszenia
+   * @param {string} offerId - ID oferty
+   * @returns {Promise<boolean>} - Czy operacja się powiodła
+   */
+  async safeDecrementAvailableSlots(offerId) {
     try {
       // Pobierz aktualną liczbę dostępnych miejsc
       const { data: offer, error: fetchError } = await supabaseAdmin
@@ -90,88 +91,15 @@ async safeDecrementAvailableSlots(offerId) {
       return false; // Nie rzucaj błędu, zwróć false
     }
   }
-  
+
   /**
-   * Zmniejsza liczbę dostępnych miejsc w ofercie
-   * Ta metoda zwraca błąd, jeśli nie ma miejsc do zmniejszenia
-   * @param {string} offerId - ID oferty
-   * @returns {Promise<boolean>} - Czy operacja się powiodła
+   * Przetwarza płatność dla zakupu subskrypcji
+   * @param {string} purchaseId - ID zakupu
+   * @param {string} paymentMethod - Metoda płatności
+   * @param {string} userId - ID użytkownika
+   * @returns {Promise<Object>} - Dane dostępu
    */
-  async decrementAvailableSlots(offerId) {
-    try {
-      // Pobierz aktualną liczbę dostępnych miejsc
-      const { data: offer, error: fetchError } = await supabaseAdmin
-        .from('group_subs')
-        .select('slots_available, slots_total')
-        .eq('id', offerId)
-        .single();
-      
-      // Sprawdź błędy pobierania
-      if (fetchError) {
-        console.error(`Error fetching offer ${offerId}:`, fetchError);
-        throw new Error(`Nie udało się pobrać informacji o ofercie: ${fetchError.message}`);
-      }
-      
-      // Sprawdź czy dane oferty istnieją
-      if (!offer) {
-        console.error(`Offer ${offerId} not found`);
-        throw new Error('Nie znaleziono oferty');
-      }
-      
-      console.log(`Offer ${offerId} current slots: ${offer.slots_available}/${offer.slots_total}`);
-      
-      // Tolerancja na niezgodność danych - jeśli slots_available jest null lub undefined, 
-      // przyjmujemy że jest tyle samo co slots_total
-      if (offer.slots_available === null || offer.slots_available === undefined) {
-        console.warn(`Offer ${offerId} has null/undefined slots_available, using slots_total`);
-        offer.slots_available = offer.slots_total || 0;
-      }
-      
-      // Konwersja na liczby dla bezpieczeństwa
-      const availableSlots = parseInt(offer.slots_available);
-      
-      // Sprawdź, czy są dostępne miejsca - bardziej defensywne podejście
-      if (isNaN(availableSlots) || availableSlots <= 0) {
-        console.error(`No available slots for offer ${offerId}: ${availableSlots}`);
-        throw new Error('Brak dostępnych miejsc w ofercie');
-      }
-      
-      console.log(`Decrementing slots for offer ${offerId} from ${availableSlots} to ${availableSlots - 1}`);
-      
-      // Zmniejsz liczbę dostępnych miejsc - używamy równania slots_available = slots_available - 1
-      // zamiast wpisywania konkretnej wartości, aby uniknąć race condition
-      const { data: updatedOffer, error: updateError } = await supabaseAdmin
-        .from('group_subs')
-        .update({
-          slots_available: availableSlots - 1,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', offerId)
-        .select('slots_available')
-        .single();
-      
-      if (updateError) {
-        console.error(`Error updating slots for offer ${offerId}:`, updateError);
-        throw new Error('Nie udało się zaktualizować liczby dostępnych miejsc: ' + updateError.message);
-      }
-      
-      console.log(`Successfully updated slots for offer ${offerId}, new value: ${updatedOffer.slots_available}`);
-      return true;
-    } catch (error) {
-      console.error('Error in decrementAvailableSlots:', error);
-      throw error;
-    }
-  }
-
-
-/**
- * Przetwarza płatność dla zakupu subskrypcji
- * @param {string} purchaseId - ID zakupu
- * @param {string} paymentMethod - Metoda płatności
- * @param {string} userId - ID użytkownika
- * @returns {Promise<Object>} - Dane dostępu
- */
-async processPayment(purchaseId, paymentMethod, userId) {
+  async processPayment(purchaseId, paymentMethod, userId) {
     // Flag dla ukończonych już etapów, żeby można było bezpiecznie zakończyć płatność 
     // nawet jeśli zmniejszenie liczby miejsc się nie powiedzie
     const completedSteps = {
@@ -240,11 +168,13 @@ async processPayment(purchaseId, paymentMethod, userId) {
       completedSteps.purchaseUpdated = true;
       
       // 8. Zmniejsz liczbę dostępnych miejsc w ofercie
-      // Próbuj zmniejszyć liczbę miejsc, ale nie przerywaj procesu jeśli to się nie powiedzie
+      // WAŻNE: To jest jedyne miejsce, gdzie zmniejszamy liczbę miejsc
+      // Usunęliśmy drugą dekrementację z webhook'a payment-gateway, 
+      // aby uniknąć podwójnego zmniejszania liczby miejsc
       try {
-        await this.safeDecrementAvailableSlots(offer.id);
-        console.log(`Decreased available slots for offer ${offer.id}`);
-        completedSteps.slotsUpdated = true;
+        const slotsUpdated = await this.safeDecrementAvailableSlots(offer.id);
+        console.log(`Slots update result for offer ${offer.id}: ${slotsUpdated ? 'success' : 'failed'}`);
+        completedSteps.slotsUpdated = slotsUpdated;
       } catch (slotError) {
         // Logujemy błąd, ale kontynuujemy proces
         console.warn(`Failed to update available slots for offer ${offer.id}: ${slotError.message}`);
@@ -318,151 +248,6 @@ async processPayment(purchaseId, paymentMethod, userId) {
       throw error;
     }
   }
-  
-  /**
-   * Potwierdza poprawność dostępu do subskrypcji
-   * @param {string} purchaseId - ID zakupu
-   * @param {boolean} isWorking - Czy dostęp działa poprawnie
-   * @param {string} userId - ID użytkownika
-   * @returns {Promise<Object>} - Wynik potwierdzenia
-   */
-  async confirmAccess(purchaseId, isWorking, userId) {
-    try {
-      // 1. Pobierz dane zakupu
-      const purchase = await this.getPurchaseRecord(purchaseId);
-      
-      // 2. Sprawdź, czy zakup należy do użytkownika
-      if (purchase.user_id !== userId) {
-        throw new Error('Brak uprawnień do potwierdzenia tego dostępu');
-      }
-      
-      // 3. Sprawdź, czy dostęp został udostępniony
-      if (!purchase.access_provided) {
-        throw new Error('Dostęp nie został jeszcze udostępniony');
-      }
-      
-      // 4. Zaktualizuj status potwierdzenia
-      await supabaseAdmin
-        .from('purchase_records')
-        .update({
-          access_confirmed: true,
-          access_confirmed_at: new Date().toISOString()
-        })
-        .eq('id', purchaseId);
-      
-      // 5. Jeśli dostęp nie działa, utwórz spór
-      if (!isWorking) {
-        const disputeId = await this.createAccessDispute(purchaseId, userId);
-        
-        return {
-          confirmed: true,
-          disputeCreated: true,
-          disputeId
-        };
-      }
-      
-      // 6. Zaloguj operację
-      await this.logPaymentActivity('access_confirmation', purchaseId, userId, {
-        isWorking
-      });
-      
-      return {
-        confirmed: true,
-        disputeCreated: false
-      };
-    } catch (error) {
-      console.error('Error confirming access:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Generuje raport sprzedaży dla sprzedawcy
-   * @param {string} userId - ID użytkownika (sprzedawcy)
-   * @param {Object} filters - Filtry raportu
-   * @returns {Promise<Object>} - Raport sprzedaży
-   */
-  async generateSalesReport(userId, filters = {}) {
-    try {
-      // Zakres dat
-      const startDate = filters.startDate ? new Date(filters.startDate) : new Date();
-      startDate.setMonth(startDate.getMonth() - 1); // Domyślnie ostatni miesiąc
-      
-      const endDate = filters.endDate ? new Date(filters.endDate) : new Date();
-      
-      // Pobierz transakcje sprzedaży dla sprzedawcy
-      const { data: transactions, error } = await supabaseAdmin
-        .from('transactions')
-        .select(`
-          *,
-          group_sub:group_subs(
-            id,
-            price_per_slot,
-            currency,
-            subscription_platforms(id, name)
-          ),
-          buyer:user_profiles!buyer_id(id, display_name, email)
-        `)
-        .eq('seller_id', userId)
-        .eq('status', 'completed')
-        .gte('completed_at', startDate.toISOString())
-        .lte('completed_at', endDate.toISOString());
-      
-      if (error) {
-        throw new Error('Nie udało się pobrać transakcji: ' + error.message);
-      }
-      
-      // Przygotuj podsumowanie sprzedaży
-      const summary = {
-        totalSales: transactions.length,
-        totalRevenue: 0,
-        platformFees: 0,
-        netRevenue: 0,
-        period: {
-          start: startDate.toISOString(),
-          end: endDate.toISOString()
-        },
-        byPlatform: {},
-        transactions: transactions.map(tx => ({
-          id: tx.id,
-          date: tx.completed_at,
-          platform: tx.group_sub.subscription_platforms.name,
-          amount: tx.amount,
-          fee: tx.platform_fee,
-          net: tx.seller_amount,
-          buyer: tx.buyer.display_name
-        }))
-      };
-      
-      // Oblicz sumy i statystyki
-      for (const tx of transactions) {
-        summary.totalRevenue += tx.amount;
-        summary.platformFees += tx.platform_fee;
-        summary.netRevenue += tx.seller_amount;
-        
-        // Statystyki według platformy
-        const platformName = tx.group_sub.subscription_platforms.name;
-        if (!summary.byPlatform[platformName]) {
-          summary.byPlatform[platformName] = {
-            count: 0,
-            totalRevenue: 0,
-            netRevenue: 0
-          };
-        }
-        
-        summary.byPlatform[platformName].count++;
-        summary.byPlatform[platformName].totalRevenue += tx.amount;
-        summary.byPlatform[platformName].netRevenue += tx.seller_amount;
-      }
-      
-      return summary;
-    } catch (error) {
-      console.error('Error generating sales report:', error);
-      throw error;
-    }
-  }
-  
-  // Metody pomocnicze
   
   /**
    * Pobiera rekord zakupu ze szczegółami
@@ -599,84 +384,13 @@ async processPayment(purchaseId, paymentMethod, userId) {
     return data;
   }
   
-/**
- * Zmniejsza liczbę dostępnych miejsc w ofercie
- * @param {string} offerId - ID oferty
- * @returns {Promise<boolean>} - Czy operacja się powiodła
- */
-async decrementAvailableSlots(offerId) {
-    try {
-      // Pobierz aktualną liczbę dostępnych miejsc
-      const { data: offer, error: fetchError } = await supabaseAdmin
-        .from('group_subs')
-        .select('slots_available, slots_total')
-        .eq('id', offerId)
-        .single();
-      
-      // Sprawdź błędy pobierania
-      if (fetchError) {
-        console.error(`Error fetching offer ${offerId}:`, fetchError);
-        throw new Error(`Nie udało się pobrać informacji o ofercie: ${fetchError.message}`);
-      }
-      
-      // Sprawdź czy dane oferty istnieją
-      if (!offer) {
-        console.error(`Offer ${offerId} not found`);
-        throw new Error('Nie znaleziono oferty');
-      }
-      
-      console.log(`Offer ${offerId} current slots: ${offer.slots_available}/${offer.slots_total}`);
-      
-      // Tolerancja na niezgodność danych - jeśli slots_available jest null lub undefined, 
-      // przyjmujemy że jest tyle samo co slots_total
-      if (offer.slots_available === null || offer.slots_available === undefined) {
-        console.warn(`Offer ${offerId} has null/undefined slots_available, using slots_total`);
-        offer.slots_available = offer.slots_total || 0;
-      }
-      
-      // Konwersja na liczby dla bezpieczeństwa
-      const availableSlots = parseInt(offer.slots_available);
-      
-      // Sprawdź, czy są dostępne miejsca - bardziej defensywne podejście
-      if (isNaN(availableSlots) || availableSlots <= 0) {
-        console.error(`No available slots for offer ${offerId}: ${availableSlots}`);
-        throw new Error('Brak dostępnych miejsc w ofercie');
-      }
-      
-      console.log(`Decrementing slots for offer ${offerId} from ${availableSlots} to ${availableSlots - 1}`);
-      
-      // Zmniejsz liczbę dostępnych miejsc - używamy równania slots_available = slots_available - 1
-      // zamiast wpisywania konkretnej wartości, aby uniknąć race condition
-      const { data: updatedOffer, error: updateError } = await supabaseAdmin
-        .from('group_subs')
-        .update({
-          slots_available: availableSlots - 1,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', offerId)
-        .select('slots_available')
-        .single();
-      
-      if (updateError) {
-        console.error(`Error updating slots for offer ${offerId}:`, updateError);
-        throw new Error('Nie udało się zaktualizować liczby dostępnych miejsc: ' + updateError.message);
-      }
-      
-      console.log(`Successfully updated slots for offer ${offerId}, new value: ${updatedOffer.slots_available}`);
-      return true;
-    } catch (error) {
-      console.error('Error in decrementAvailableSlots:', error);
-      throw error;
-    }
-  }
-  
-/**
- * Generuje token dostępu dla zakupu
- * @param {string} purchaseId - ID zakupu
- * @param {string} userId - ID użytkownika
- * @returns {Promise<Object>} - Token i URL dostępu
- */
-async generateAccessToken(purchaseId, userId) {
+  /**
+   * Generuje token dostępu dla zakupu
+   * @param {string} purchaseId - ID zakupu
+   * @param {string} userId - ID użytkownika
+   * @returns {Promise<Object>} - Token i URL dostępu
+   */
+  async generateAccessToken(purchaseId, userId) {
     try {
       // Używamy ulepszonej wersji generateAccessToken, która jest odporna na brak kolumny created_by
       const { token, tokenId, accessUrl } = await this.tokenService.generateAccessToken(
@@ -730,6 +444,63 @@ async generateAccessToken(purchaseId, userId) {
       await this.logPaymentActivity('token_generated_fallback', purchaseId, userId);
       
       return { token, tokenId: data.id, accessUrl };
+    }
+  }
+  
+  /**
+   * Potwierdza poprawność dostępu do subskrypcji
+   * @param {string} purchaseId - ID zakupu
+   * @param {boolean} isWorking - Czy dostęp działa poprawnie
+   * @param {string} userId - ID użytkownika
+   * @returns {Promise<Object>} - Wynik potwierdzenia
+   */
+  async confirmAccess(purchaseId, isWorking, userId) {
+    try {
+      // 1. Pobierz dane zakupu
+      const purchase = await this.getPurchaseRecord(purchaseId);
+      
+      // 2. Sprawdź, czy zakup należy do użytkownika
+      if (purchase.user_id !== userId) {
+        throw new Error('Brak uprawnień do potwierdzenia tego dostępu');
+      }
+      
+      // 3. Sprawdź, czy dostęp został udostępniony
+      if (!purchase.access_provided) {
+        throw new Error('Dostęp nie został jeszcze udostępniony');
+      }
+      
+      // 4. Zaktualizuj status potwierdzenia
+      await supabaseAdmin
+        .from('purchase_records')
+        .update({
+          access_confirmed: true,
+          access_confirmed_at: new Date().toISOString()
+        })
+        .eq('id', purchaseId);
+      
+      // 5. Jeśli dostęp nie działa, utwórz spór
+      if (!isWorking) {
+        const disputeId = await this.createAccessDispute(purchaseId, userId);
+        
+        return {
+          confirmed: true,
+          disputeCreated: true,
+          disputeId
+        };
+      }
+      
+      // 6. Zaloguj operację
+      await this.logPaymentActivity('access_confirmation', purchaseId, userId, {
+        isWorking
+      });
+      
+      return {
+        confirmed: true,
+        disputeCreated: false
+      };
+    } catch (error) {
+      console.error('Error confirming access:', error);
+      throw error;
     }
   }
   
