@@ -1,15 +1,7 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
   "/offers/page": "app/offers/page.js",
   "/checkout/[id]/page": "app/checkout/[id]/page.js",
   "/access/page": "app/access/page.js",
   "/dashboard/page": "app/dashboard/page.js",
-  "/api/auth/profile/route": "app/api/auth/profile/route.js",
-  "/api/applications/route": "app/api/applications/route.js",
-  "/api/groups/route": "app/api/groups/route.js",
-  "/groups/[id]/page": "app/groups/[id]/page.js",
-  "/api/groups/[id]/route": "app/api/groups/[id]/route.js",
-  "/api/groups/[id]/members/route": "app/api/groups/[id]/members/route.js",
-  "/api/groups/[id]/subscriptions/route": "app/api/groups/[id]/subscriptions/route.js",
-  "/applications/page": "app/applications/page.js"
+  "/groups/[id]/page": "app/groups/[id]/page.js"
 }

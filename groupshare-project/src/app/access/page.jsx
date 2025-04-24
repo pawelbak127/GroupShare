@@ -1,29 +1,25 @@
-'use client';
+'use client'
 
 import { useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import SecureAccessDisplay from '@/components/secure-access/SecureAccessDisplay';
 import LoginRedirect from '@/components/auth/LoginRedirect';
 
-/**
- * Strona do bezpiecznego wyświetlania instrukcji dostępowych po użyciu jednorazowego tokenu
- */
-export default function AccessPage() {
+function AccessContent() {
   const searchParams = useSearchParams();
   const { isSignedIn, isLoaded } = useAuth();
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  
-  // Pobierz parametry z URL
+
   const applicationId = searchParams.get('id');
   const token = searchParams.get('token');
-  
+
   useEffect(() => {
     if (isLoaded) {
       setIsLoadingAuth(false);
     }
   }, [isLoaded]);
-  
+
   if (isLoadingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -32,8 +28,7 @@ export default function AccessPage() {
       </div>
     );
   }
-  
-  // Jeśli użytkownik nie jest zalogowany, przekieruj do logowania
+
   if (!isSignedIn) {
     return (
       <LoginRedirect
@@ -42,8 +37,7 @@ export default function AccessPage() {
       />
     );
   }
-  
-  // Jeśli brak wymaganych parametrów
+
   if (!applicationId || !token) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-8">
@@ -56,7 +50,7 @@ export default function AccessPage() {
       </div>
     );
   }
-  
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <div className="mb-6">
@@ -65,11 +59,16 @@ export default function AccessPage() {
           Poniżej znajdują się jednorazowe instrukcje dostępowe do subskrypcji.
         </p>
       </div>
-      
-      <SecureAccessDisplay 
-        applicationId={applicationId} 
-        token={token} 
-      />
+
+      <SecureAccessDisplay applicationId={applicationId} token={token} />
     </div>
+  );
+}
+
+export default function AccessPage() {
+  return (
+    <Suspense fallback={<div className="text-center p-6">Wczytywanie...</div>}>
+      <AccessContent />
+    </Suspense>
   );
 }
