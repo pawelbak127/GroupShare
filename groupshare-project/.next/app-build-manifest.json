@@ -16,10 +16,20 @@
       "static/chunks/main-app.js",
       "static/chunks/app/offers/page.js"
     ],
-    "/sign-in/[[...rest]]/page": [
+    "/dashboard/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/sign-in/[[...rest]]/page.js"
+      "static/chunks/app/dashboard/page.js"
+    ],
+    "/groups/[id]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/groups/[id]/page.js"
+    ],
+    "/_not-found/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/_not-found/page.js"
     ]
   }
 }

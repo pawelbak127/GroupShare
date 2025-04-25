@@ -86,16 +86,56 @@ export async function GET(request) {
       `)
       .eq('status', 'active');
     
-    // Filtrowanie widoczności grup - KLUCZOWA ZMIANA
-    if (userGroups.length > 0) {
-      // Dla zalogowanych użytkowników pokazujemy oferty z:
-      // 1. Grup publicznych LUB
-      // 2. Prywatnych grup, do których należą
-      query = query.or(`groups.visibility.eq.public,groups.id.in.(${userGroups.join(',')})`);
-    } else {
-      // Dla niezalogowanych pokazujemy tylko oferty z publicznych grup
-      query = query.eq('groups.visibility', 'public');
+
+
+// Filtrowanie widoczności grup - KLUCZOWA ZMIANA
+if (userGroups.length > 0) {
+  // Dla zalogowanych użytkowników wykonamy dwa osobne zapytania i połączymy wyniki
+  console.log(`Wykonywanie osobnych zapytań dla publicznych grup i grup użytkownika (${userGroups.join(',')})`);
+  
+  // 1. Pobierz oferty z publicznych grup
+  const { data: publicGroupsOffers } = await supabaseAdmin
+    .from('group_subs')
+    .select(`
+      *,
+      subscription_platforms(*),
+      groups(id, name, visibility),
+      owner:groups!inner(owner_id, user_profiles!inner(id, display_name, avatar_url, rating_avg, rating_count, verification_level))
+    `)
+    .eq('status', 'active')
+    .eq('groups.visibility', 'public');
+  
+  // 2. Pobierz oferty z grup, do których należy użytkownik
+  const { data: userGroupsOffers } = await supabaseAdmin
+    .from('group_subs')
+    .select(`
+      *,
+      subscription_platforms(*),
+      groups(id, name, visibility),
+      owner:groups!inner(owner_id, user_profiles!inner(id, display_name, avatar_url, rating_avg, rating_count, verification_level))
+    `)
+    .eq('status', 'active')
+    .in('group_id', userGroups);
+  
+  // 3. Połącz wyniki i usuń duplikaty
+  const allOffers = [...(publicGroupsOffers || []), ...(userGroupsOffers || [])];
+  
+  // Usuń duplikaty na podstawie id oferty
+  const uniqueOffersMap = new Map();
+  allOffers.forEach(offer => {
+    if (!uniqueOffersMap.has(offer.id)) {
+      uniqueOffersMap.set(offer.id, offer);
     }
+  });
+  
+  const uniqueOffers = Array.from(uniqueOffersMap.values());
+  console.log(`Połączono ${publicGroupsOffers?.length || 0} ofert publicznych i ${userGroupsOffers?.length || 0} ofert z grup użytkownika. Razem unikalnych: ${uniqueOffers.length}`);
+  
+  return NextResponse.json(uniqueOffers);
+} else {
+  // Dla niezalogowanych pokazujemy tylko oferty z publicznych grup
+  query = query.eq('groups.visibility', 'public');
+}
     
     // Zastosuj pozostałe filtry
     if (filters.platformId) {
