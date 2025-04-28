@@ -3,6 +3,7 @@ import { ClerkProvider } from '@clerk/nextjs';
 import { Toaster } from 'react-hot-toast';
 import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
+import { NotificationProvider } from '../components/notifications/NotificationProvider';
 import './globals.css';
 
 const inter = Inter({
@@ -39,16 +40,19 @@ export default function RootLayout({ children }) {
           {/* Toast notifications */}
           <Toaster position="top-right" />
           
-          {/* Header */}
-          <Header />
-          
-          {/* Main content */}
-          <main className="flex-grow">
-            {children}
-          </main>
-          
-          {/* Footer */}
-          <Footer />
+          {/* Notification Provider - owinięty wokół całej aplikacji */}
+          <NotificationProvider>
+            {/* Header */}
+            <Header />
+            
+            {/* Main content */}
+            <main className="flex-grow">
+              {children}
+            </main>
+            
+            {/* Footer */}
+            <Footer />
+          </NotificationProvider>
         </body>
       </html>
     </ClerkProvider>

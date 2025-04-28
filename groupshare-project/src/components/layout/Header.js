@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
 import { usePathname } from 'next/navigation';
+import NotificationBell from '../notifications/NotificationBell';
 
 /**
  * Navigation header component
@@ -110,6 +111,10 @@ const Header = () => {
             </div>
             
             <SignedIn>
+              {/* Notification Bell */}
+              <div className="mr-4">
+                <NotificationBell />
+              </div>
               <UserButton afterSignOutUrl="/" />
             </SignedIn>
             
@@ -134,6 +139,13 @@ const Header = () => {
 
           {/* Mobile menu button */}
           <div className="flex lg:hidden">
+            <SignedIn>
+              {/* Notification Bell for mobile */}
+              <div className="mr-2">
+                <NotificationBell />
+              </div>
+            </SignedIn>
+            
             <button
               type="button"
               className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500"
@@ -216,6 +228,17 @@ const Header = () => {
                   onClick={closeMobileMenu}
                 >
                   Moje grupy
+                </Link>
+                <Link
+                  href="/notifications"
+                  className={`block px-3 py-2 rounded-md text-base font-medium ${
+                    isActiveLink('/notifications')
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                  onClick={closeMobileMenu}
+                >
+                  Powiadomienia
                 </Link>
               </SignedIn>
               
