@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { 
     ArrowPathIcon as RefreshIcon, 
     CheckIcon, 
-    ArrowRightIcon 
+    ArrowRightIcon,
+    XMarkIcon
   } from '@heroicons/react/24/outline';
 import NotificationItem from './NotificationItem';
 import { toast } from '@/lib/utils/notification';

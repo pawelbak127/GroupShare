@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { toast } from '@/lib/utils/notification';
 
 /**
  * Komponent automatycznie oznaczający powiadomienia jako przeczytane po przejściu do strony.
@@ -41,7 +42,7 @@ const NotificationAutoMark = ({ entityType, entityId, children }) => {
           if (unreadNotifications.length === 0) return;
           
           // Oznacz wszystkie znalezione powiadomienia jako przeczytane
-          await fetch('/api/notifications', {
+          const updateResponse = await fetch('/api/notifications', {
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
@@ -49,7 +50,16 @@ const NotificationAutoMark = ({ entityType, entityId, children }) => {
             body: JSON.stringify({ ids: unreadNotifications }),
           });
           
-          console.log(`Marked ${unreadNotifications.length} notifications as read for ${entityType}:${entityId}`);
+          if (updateResponse.ok) {
+            console.log(`Marked ${unreadNotifications.length} notifications as read for ${entityType}:${entityId}`);
+            // Informacja dla użytkownika, że przyszedł z powiadomienia
+            if (fromNotification) {
+              toast.info('Oznaczono powiadomienia jako przeczytane', { 
+                duration: 3000,
+                position: 'bottom-right'
+              });
+            }
+          }
         } catch (error) {
           console.error('Error marking notifications as read:', error);
         }

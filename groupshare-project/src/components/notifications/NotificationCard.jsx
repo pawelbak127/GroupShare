@@ -8,10 +8,12 @@ import {
     EnvelopeIcon as MailIcon, 
     TicketIcon, 
     ExclamationTriangleIcon as ExclamationIcon, 
-    UserPlusIcon as UserAddIcon 
+    UserPlusIcon as UserAddIcon,
+    TrashIcon
   } from '@heroicons/react/24/outline';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { pl } from 'date-fns/locale';
+import { toast } from '@/lib/utils/notification';
 
 /**
  * Komponent karty pojedynczego powiadomienia
@@ -27,24 +29,44 @@ const NotificationCard = ({ notification, onMarkAsRead, onDelete }) => {
     ? formatDistanceToNow(parseISO(notification.created_at), { addSuffix: true, locale: pl }) 
     : '';
 
-  // Generowanie linku do odpowiedniego zasobu
-  const getNotificationLink = () => {
+// Generowanie linku do odpowiedniego zasobu
+const getNotificationLink = () => {
     if (!notification.related_entity_type || !notification.related_entity_id) {
       return null;
     }
-
+  
+    // Generowanie odpowiedniego URL na podstawie typu powiązanego zasobu
     switch (notification.related_entity_type) {
       case 'group':
+        return `/groups/${notification.related_entity_id}?from_notification=true`;
+      case 'group_invitation':
+        return `/groups/${notification.related_entity_id}?from_notification=true`;
+      case 'purchase':
+        return `/purchases/${notification.related_entity_id}/details?from_notification=true`;
+      case 'dispute':
+        return `/disputes/${notification.related_entity_id}?from_notification=true`;
+      case 'conversation':
+        return `/messages/${notification.related_entity_id}?from_notification=true`;
+      default:
+        return null;
+    }
+  };
+
+  // Pobieranie podstawowego URL na podstawie typu powiązanego zasobu
+  const getBaseUrl = () => {
+    switch (notification.related_entity_type) {
+      case 'group':
+        return `/groups/${notification.related_entity_id}`;
       case 'group_invitation':
         return `/groups/${notification.related_entity_id}`;
       case 'purchase':
-        return `/purchases/${notification.related_entity_id}`;
+        return `/purchases/${notification.related_entity_id}/details`;
       case 'dispute':
         return `/disputes/${notification.related_entity_id}`;
       case 'conversation':
         return `/messages/${notification.related_entity_id}`;
       default:
-        return null;
+        return '/notifications'; // Przekierowanie domyślne, jeśli typ nie jest obsługiwany
     }
   };
 
@@ -81,17 +103,34 @@ const NotificationCard = ({ notification, onMarkAsRead, onDelete }) => {
   };
 
   // Obsługa kliknięcia w powiadomienie
-  const handleClick = () => {
+const handleClick = async () => {
+    // Pobierz link docelowy
     const link = getNotificationLink();
+    console.log("Notification clicked, link:", link);
     
-    // Najpierw oznaczamy jako przeczytane
-    if (!notification.is_read) {
-      handleMarkAsRead();
-    }
-    
-    // Przekierowanie, jeśli jest dokąd
-    if (link) {
-      router.push(link);
+    try {
+      // Najpierw oznaczamy jako przeczytane
+      if (!notification.is_read) {
+        await handleMarkAsRead();
+      }
+      
+      // Przekierowanie, jeśli jest dokąd
+      if (link) {
+        console.log("Redirecting to:", link);
+        router.push(link);
+      } else {
+        // Jeśli nie ma linku, pokażmy informację
+        console.log("No link available for notification");
+        toast.info('Nie można otworzyć szczegółów tego powiadomienia');
+      }
+    } catch (error) {
+      console.error('Error handling notification click:', error);
+      
+      // Przekieruj nawet jeśli wystąpił błąd z oznaczaniem jako przeczytane
+      if (link) {
+        console.log("Redirecting despite error:", link);
+        router.push(link);
+      }
     }
   };
 
@@ -107,8 +146,14 @@ const NotificationCard = ({ notification, onMarkAsRead, onDelete }) => {
     }
     
     setIsMarkingRead(true);
-    await onMarkAsRead(notification.id);
-    setIsMarkingRead(false);
+    try {
+      await onMarkAsRead(notification.id);
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+      toast.error('Nie udało się oznaczyć powiadomienia jako przeczytane');
+    } finally {
+      setIsMarkingRead(false);
+    }
   };
 
   // Obsługa usuwania powiadomienia
@@ -122,8 +167,15 @@ const NotificationCard = ({ notification, onMarkAsRead, onDelete }) => {
     
     if (confirm('Czy na pewno chcesz usunąć to powiadomienie?')) {
       setIsDeleting(true);
-      await onDelete(notification.id);
-      setIsDeleting(false);
+      try {
+        await onDelete(notification.id);
+        toast.success('Powiadomienie zostało usunięte');
+      } catch (error) {
+        console.error('Error deleting notification:', error);
+        toast.error('Nie udało się usunąć powiadomienia');
+      } finally {
+        setIsDeleting(false);
+      }
     }
   };
 

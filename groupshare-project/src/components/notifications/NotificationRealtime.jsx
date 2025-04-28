@@ -42,6 +42,11 @@ const NotificationRealtime = ({ onNewNotification, onNotificationUpdate, childre
   useEffect(() => {
     if (!userProfileId) return;
 
+    // Cleanup previous subscription if it exists
+    if (subscription) {
+      supabase.removeChannel(subscription);
+    }
+
     // Ustaw subskrypcję na tabeli powiadomień
     const notificationSubscription = supabase
       .channel('notifications-channel')
@@ -89,10 +94,10 @@ const NotificationRealtime = ({ onNewNotification, onNotificationUpdate, childre
 
     setSubscription(notificationSubscription);
 
-    // Sprzątanie przy odmontowaniu
+    // Cleanup on unmount or when dependencies change
     return () => {
-      if (subscription) {
-        supabase.removeChannel(subscription);
+      if (notificationSubscription) {
+        supabase.removeChannel(notificationSubscription);
       }
     };
   }, [userProfileId, onNewNotification, onNotificationUpdate]);

@@ -1,38 +1,18 @@
 // src/services/notification/notification-service.js
 import supabaseAdmin from '@/lib/database/supabase-admin-client';
 
-/**
- * Serwis do zarządzania powiadomieniami użytkowników
- */
-export class NotificationService {
-  constructor() {
-    // Sprawdź czy supabaseAdmin jest dostępny przy inicjalizacji
-    if (!supabaseAdmin) {
-      console.warn('NotificationService: supabaseAdmin is not initialized. Service functionality will be limited.');
-    }
-  }
-
+class NotificationService {
   /**
-   * Metoda pomocnicza sprawdzająca dostępność klienta supabase
-   * @private
-   */
-  _checkSupabaseClient() {
-    if (!supabaseAdmin) {
-      throw new Error('Database client is not initialized. Check server configuration.');
-    }
-  }
-
-  /**
-   * Tworzy nowe powiadomienie
-   * @param {string} userId - ID użytkownika, który ma otrzymać powiadomienie
-   * @param {string} type - Typ powiadomienia (invite, message, purchase, dispute)
-   * @param {string} title - Tytuł powiadomienia
-   * @param {string} content - Treść powiadomienia
-   * @param {string} relatedEntityType - Typ powiązanego zasobu (np. group, purchase)
-   * @param {string} relatedEntityId - ID powiązanego zasobu
-   * @param {string} priority - Priorytet powiadomienia (high, normal, low)
-   * @param {number} ttl - Czas życia w sekundach, 0 oznacza brak wygaśnięcia
-   * @returns {Promise<Object>} - Utworzone powiadomienie
+   * Creates a new notification
+   * @param {string} userId - ID of the user to notify
+   * @param {string} type - Type of notification (invite, message, purchase, dispute)
+   * @param {string} title - Title of the notification
+   * @param {string} content - Content of the notification
+   * @param {string} relatedEntityType - Type of related entity (optional)
+   * @param {string} relatedEntityId - ID of related entity (optional)
+   * @param {string} priority - Priority (high, normal, low) (optional)
+   * @param {number} ttl - Time to live in days (0 = no expiration) (optional)
+   * @returns {Promise<Object>} Created notification
    */
   async createNotification(
     userId,
@@ -45,32 +25,6 @@ export class NotificationService {
     ttl = 0
   ) {
     try {
-      this._checkSupabaseClient();
-
-      // Walidacja podstawowych danych
-      if (!userId || !type || !title || !content) {
-        throw new Error('Missing required fields: userId, type, title and content are required');
-      }
-
-      // Walidacja typu
-      const validTypes = ['invite', 'message', 'purchase', 'dispute'];
-      if (!validTypes.includes(type)) {
-        throw new Error(`Invalid notification type. Must be one of: ${validTypes.join(', ')}`);
-      }
-
-      // Walidacja priorytetu
-      const validPriorities = ['high', 'normal', 'low'];
-      if (!validPriorities.includes(priority)) {
-        throw new Error(`Invalid priority. Must be one of: ${validPriorities.join(', ')}`);
-      }
-
-      // Oblicz datę wygaśnięcia, jeśli podano TTL
-      let expiresAt = null;
-      if (ttl > 0) {
-        expiresAt = new Date();
-        expiresAt.setSeconds(expiresAt.getSeconds() + ttl);
-      }
-
       const notification = {
         user_id: userId,
         type,
@@ -79,9 +33,8 @@ export class NotificationService {
         related_entity_type: relatedEntityType,
         related_entity_id: relatedEntityId,
         priority,
-        expires_at: expiresAt ? expiresAt.toISOString() : null,
+        is_read: false,
         created_at: new Date().toISOString(),
-        is_read: false
       };
 
       const { data, error } = await supabaseAdmin
@@ -90,98 +43,167 @@ export class NotificationService {
         .select()
         .single();
 
-      if (error) {
-        console.error('Error creating notification:', error);
-        throw new Error(`Failed to create notification: ${error.message}`);
-      }
+      if (error) throw error;
 
       return data;
     } catch (error) {
-      console.error('Exception in createNotification:', error);
-      throw error;
+      console.error('Error creating notification:', error);
+      throw new Error(`Failed to create notification: ${error.message}`);
     }
   }
 
   /**
-   * Pobiera powiadomienia użytkownika z filtrowaniem i paginacją
-   * @param {string} userId - ID użytkownika
-   * @param {Object} options - Opcje filtrowania i paginacji
-   * @returns {Promise<Object>} - Powiadomienia i informacje o paginacji
+   * Get unread notification count for a user
+   * @param {string} userId - User ID
+   * @returns {Promise<number>} Number of unread notifications
+   */
+  async getUnreadCount(userId) {
+    try {
+      const { count, error } = await supabaseAdmin
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('is_read', false);
+
+      if (error) throw error;
+
+      return count || 0;
+    } catch (error) {
+      console.error('Error counting unread notifications:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Mark notification as read
+   * @param {string|string[]} notificationIds - Notification ID or array of IDs
+   * @param {string} userId - User ID for verification
+   * @returns {Promise<boolean>} Success status
+   */
+  async markAsRead(notificationIds, userId) {
+    try {
+      // Convert single ID to array if needed
+      const ids = Array.isArray(notificationIds) ? notificationIds : [notificationIds];
+      
+      const { error } = await supabaseAdmin
+        .from('notifications')
+        .update({
+          is_read: true
+          // Removed read_at as it doesn't exist in the schema
+        })
+        .in('id', ids)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      return true;
+    } catch (error) {
+      console.error('Error marking notifications as read:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Mark all notifications as read for a user
+   * @param {string} userId - User ID
+   * @returns {Promise<boolean>} Success status
+   */
+  async markAllAsRead(userId) {
+    try {
+      const { error } = await supabaseAdmin
+        .from('notifications')
+        .update({
+          is_read: true
+          // Removed read_at as it doesn't exist in the schema
+        })
+        .eq('user_id', userId)
+        .eq('is_read', false);
+
+      if (error) throw error;
+
+      return true;
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Delete a notification
+   * @param {string} notificationId - Notification ID
+   * @param {string} userId - User ID for verification
+   * @returns {Promise<boolean>} Success status
+   */
+  async deleteNotification(notificationId, userId) {
+    try {
+      const { error } = await supabaseAdmin
+        .from('notifications')
+        .delete()
+        .eq('id', notificationId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      return true;
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get user notifications with filtering and pagination
+   * @param {string} userId - User ID
+   * @param {Object} options - Filter and pagination options
+   * @returns {Promise<Object>} Notifications and pagination info
    */
   async getUserNotifications(userId, options = {}) {
     try {
-      this._checkSupabaseClient();
-
-      if (!userId) {
-        throw new Error('User ID is required');
-      }
-
-      const {
-        type = null,
-        read = null,
-        priority = null,
-        page = 1,
-        pageSize = 10,
-        relatedEntityType = null,
-        relatedEntityId = null,
-        olderThan = null,
-        newerThan = null,
-      } = options;
-
-      // Oblicz paginację
-      const from = (page - 1) * pageSize;
-      const to = from + pageSize - 1;
-
-      // Zbuduj zapytanie
+      // Build the query
       let query = supabaseAdmin
         .from('notifications')
         .select('*', { count: 'exact' })
         .eq('user_id', userId);
 
-      // Zastosuj filtry
-      if (type) {
-        query = query.eq('type', type);
+      // Apply filters
+      if (options.type) {
+        query = query.eq('type', options.type);
       }
 
-      if (read !== null) {
-        query = query.eq('is_read', read);
+      if (options.read !== null && options.read !== undefined) {
+        query = query.eq('is_read', options.read);
       }
 
-      if (priority) {
-        query = query.eq('priority', priority);
+      if (options.priority) {
+        query = query.eq('priority', options.priority);
       }
 
-      if (relatedEntityType) {
-        query = query.eq('related_entity_type', relatedEntityType);
+      if (options.relatedEntityType) {
+        query = query.eq('related_entity_type', options.relatedEntityType);
       }
 
-      if (relatedEntityId) {
-        query = query.eq('related_entity_id', relatedEntityId);
+      if (options.relatedEntityId) {
+        query = query.eq('related_entity_id', options.relatedEntityId);
       }
 
-      // Filtry dat
-      if (olderThan) {
-        query = query.lt('created_at', olderThan);
-      }
+      // Order by creation date, newest first
+      query = query.order('created_at', { ascending: false });
 
-      if (newerThan) {
-        query = query.gt('created_at', newerThan);
-      }
+      // Apply pagination
+      const page = options.page || 1;
+      const pageSize = options.pageSize || 10;
+      const start = (page - 1) * pageSize;
+      const end = start + pageSize - 1;
 
-      // Wykluczanie wygasłych powiadomień
-      query = query.or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
+      query = query.range(start, end);
 
-      // Sortowanie i paginacja
-      query = query
-        .order('created_at', { ascending: false })
-        .range(from, to);
-
+      // Execute the query
       const { data, error, count } = await query;
 
-      if (error) {
-        console.error('Error fetching notifications:', error);
-        throw new Error(`Failed to fetch notifications: ${error.message}`);
-      }
+      if (error) throw error;
+
+      // Calculate pagination info
+      const totalPages = Math.ceil((count || 0) / pageSize);
 
       return {
         notifications: data || [],
@@ -189,339 +211,111 @@ export class NotificationService {
           page,
           pageSize,
           total: count || 0,
-          totalPages: count ? Math.ceil(count / pageSize) : 0
+          totalPages
         }
       };
     } catch (error) {
       console.error('Exception in getUserNotifications:', error);
-      
-      // Zwróć domyślną strukturę w przypadku błędu, aby aplikacja mogła działać dalej
+      throw new Error(`Failed to fetch notifications: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get notification preferences for a user
+   * @param {string} userId - User ID
+   * @returns {Promise<Object>} Notification preferences
+   */
+  async getNotificationPreferences(userId) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('notification_preferences')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      // If no preferences exist, return defaults
+      if (!data) {
+        return {
+          user_id: userId,
+          email_enabled: true,
+          push_enabled: false,
+          notify_on_invite: true,
+          notify_on_message: true,
+          notify_on_purchase: true,
+          notify_on_dispute: true,
+          email_digest: 'daily'
+        };
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching notification preferences:', error);
+      // Return defaults on error
       return {
-        notifications: [],
-        pagination: {
-          page: options.page || 1,
-          pageSize: options.pageSize || 10,
-          total: 0,
-          totalPages: 0
-        },
-        error: error.message
+        user_id: userId,
+        email_enabled: true,
+        push_enabled: false,
+        notify_on_invite: true,
+        notify_on_message: true,
+        notify_on_purchase: true,
+        notify_on_dispute: true,
+        email_digest: 'daily'
       };
     }
   }
 
   /**
-   * Pobiera liczbę nieprzeczytanych powiadomień dla użytkownika
-   * @param {string} userId - ID użytkownika
-   * @returns {Promise<number>} - Liczba nieprzeczytanych powiadomień
-   */
-  async getUnreadCount(userId) {
-    try {
-      this._checkSupabaseClient();
-
-      if (!userId) {
-        return 0;
-      }
-
-      const { count, error } = await supabaseAdmin
-        .from('notifications')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', userId)
-        .eq('is_read', false)
-        .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
-
-      if (error) {
-        console.error('Error counting unread notifications:', error);
-        return 0;
-      }
-
-      return count || 0;
-    } catch (error) {
-      console.error('Exception in getUnreadCount:', error);
-      return 0;
-    }
-  }
-
-  /**
-   * Oznacza powiadomienia jako przeczytane
-   * @param {Array<string>} notificationIds - Tablica ID powiadomień do oznaczenia
-   * @param {string} userId - ID użytkownika (dla weryfikacji bezpieczeństwa)
-   * @returns {Promise<boolean>} - Czy operacja się powiodła
-   */
-  async markAsRead(notificationIds, userId) {
-    try {
-      this._checkSupabaseClient();
-
-      if (!Array.isArray(notificationIds) || notificationIds.length === 0 || !userId) {
-        return false;
-      }
-
-      // Aktualizuj powiadomienia, upewniając się, że należą do użytkownika
-      const { error } = await supabaseAdmin
-        .from('notifications')
-        .update({
-          is_read: true,
-          read_at: new Date().toISOString()
-        })
-        .in('id', notificationIds)
-        .eq('user_id', userId);
-
-      if (error) {
-        console.error('Error marking notifications as read:', error);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Exception in markAsRead:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Oznacza wszystkie powiadomienia użytkownika jako przeczytane
-   * @param {string} userId - ID użytkownika
-   * @returns {Promise<boolean>} - Czy operacja się powiodła
-   */
-  async markAllAsRead(userId) {
-    try {
-      this._checkSupabaseClient();
-
-      if (!userId) {
-        return false;
-      }
-
-      const { error } = await supabaseAdmin
-        .from('notifications')
-        .update({
-          is_read: true,
-          read_at: new Date().toISOString()
-        })
-        .eq('user_id', userId)
-        .eq('is_read', false);
-
-      if (error) {
-        console.error('Error marking all notifications as read:', error);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Exception in markAllAsRead:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Usuwa powiadomienie
-   * @param {string} notificationId - ID powiadomienia do usunięcia
-   * @param {string} userId - ID użytkownika (dla weryfikacji bezpieczeństwa)
-   * @returns {Promise<boolean>} - Czy operacja się powiodła
-   */
-  async deleteNotification(notificationId, userId) {
-    try {
-      this._checkSupabaseClient();
-
-      if (!notificationId || !userId) {
-        return false;
-      }
-
-      // Usuń powiadomienie, upewniając się, że należy do użytkownika
-      const { error } = await supabaseAdmin
-        .from('notifications')
-        .delete()
-        .eq('id', notificationId)
-        .eq('user_id', userId);
-
-      if (error) {
-        console.error('Error deleting notification:', error);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Exception in deleteNotification:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Pobiera preferencje powiadomień dla użytkownika
-   * @param {string} userId - ID użytkownika
-   * @returns {Promise<Object>} - Preferencje powiadomień
-   */
-  async getNotificationPreferences(userId) {
-    try {
-      this._checkSupabaseClient();
-
-      if (!userId) {
-        return this.getDefaultPreferences();
-      }
-
-      const { data, error } = await supabaseAdmin
-        .from('notification_preferences')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-
-      if (error && error.code !== 'PGRST116') { // PGRST116 = not found
-        console.error('Error fetching notification preferences:', error);
-        return this.getDefaultPreferences();
-      }
-
-      // Jeśli nie znaleziono preferencji, zwróć domyślne
-      if (!data) {
-        return this.getDefaultPreferences();
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Exception in getNotificationPreferences:', error);
-      return this.getDefaultPreferences();
-    }
-  }
-
-  /**
-   * Aktualizuje preferencje powiadomień dla użytkownika
-   * @param {string} userId - ID użytkownika
-   * @param {Object} preferences - Preferencje powiadomień do aktualizacji
-   * @returns {Promise<Object>} - Zaktualizowane preferencje
+   * Update notification preferences for a user
+   * @param {string} userId - User ID
+   * @param {Object} preferences - Updated preferences
+   * @returns {Promise<Object>} Updated preferences
    */
   async updateNotificationPreferences(userId, preferences) {
     try {
-      this._checkSupabaseClient();
+      // Check if preferences already exist
+      const { data: existing } = await supabaseAdmin
+        .from('notification_preferences')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
 
-      if (!userId) {
-        throw new Error('User ID is required');
-      }
+      let result;
 
-      // Pobierz aktualne preferencje
-      const currentPrefs = await this.getNotificationPreferences(userId);
-      
-      // Sprawdź, czy trzeba wstawić czy zaktualizować
-      const operation = currentPrefs.id 
-        ? supabaseAdmin.from('notification_preferences').update({
-            ...preferences,
-            updated_at: new Date().toISOString()
-          }).eq('id', currentPrefs.id)
-        : supabaseAdmin.from('notification_preferences').insert({
-            user_id: userId,
-            ...preferences,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-      
-      const { data, error } = await operation.select().single();
+      if (existing) {
+        // Update existing preferences
+        const { data, error } = await supabaseAdmin
+          .from('notification_preferences')
+          .update(preferences)
+          .eq('user_id', userId)
+          .select()
+          .single();
 
-      if (error) {
-        console.error('Error updating notification preferences:', error);
-        throw new Error(`Failed to update notification preferences: ${error.message}`);
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Exception in updateNotificationPreferences:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Pobiera domyślne preferencje powiadomień
-   * @returns {Object} - Domyślne preferencje
-   */
-  getDefaultPreferences() {
-    return {
-      email_notifications: true,
-      push_notifications: false,
-      notify_on_invite: true,
-      notify_on_message: true,
-      notify_on_purchase: true,
-      notify_on_dispute: true,
-      email_digest: 'daily', // daily, weekly, never
-    };
-  }
-
-  /**
-   * Grupuje powiązane powiadomienia
-   * @param {Array<Object>} notifications - Powiadomienia do pogrupowania
-   * @returns {Array<Object>} - Pogrupowane powiadomienia
-   */
-  groupNotifications(notifications) {
-    if (!notifications || notifications.length === 0) {
-      return [];
-    }
-
-    const groups = {};
-
-    // Grupuj powiadomienia według powiązanego zasobu, jeśli dostępny
-    notifications.forEach(notification => {
-      if (notification.related_entity_type && notification.related_entity_id) {
-        const key = `${notification.related_entity_type}_${notification.related_entity_id}`;
-        
-        if (!groups[key]) {
-          groups[key] = {
-            type: notification.type,
-            related_entity_type: notification.related_entity_type,
-            related_entity_id: notification.related_entity_id,
-            latest: notification,
-            count: 1,
-            notifications: [notification]
-          };
-        } else {
-          groups[key].count++;
-          groups[key].notifications.push(notification);
-          
-          // Zaktualizuj najnowsze, jeśli to powiadomienie jest nowsze
-          if (new Date(notification.created_at) > new Date(groups[key].latest.created_at)) {
-            groups[key].latest = notification;
-          }
-        }
+        if (error) throw error;
+        result = data;
       } else {
-        // Dla powiadomień bez powiązań utwórz unikalną grupę
-        const key = `individual_${notification.id}`;
-        groups[key] = {
-          type: notification.type,
-          latest: notification,
-          count: 1,
-          notifications: [notification]
-        };
-      }
-    });
+        // Create new preferences
+        const { data, error } = await supabaseAdmin
+          .from('notification_preferences')
+          .insert({
+            user_id: userId,
+            ...preferences
+          })
+          .select()
+          .single();
 
-    // Konwertuj na tablicę i sortuj według daty najnowszego powiadomienia
-    return Object.values(groups).sort((a, b) => 
-      new Date(b.latest.created_at) - new Date(a.latest.created_at)
-    );
-  }
-
-  /**
-   * Czyści wygasłe powiadomienia
-   * @returns {Promise<number>} - Liczba usuniętych powiadomień
-   */
-  async cleanupExpiredNotifications() {
-    try {
-      this._checkSupabaseClient();
-
-      const now = new Date().toISOString();
-      
-      const { data, error } = await supabaseAdmin
-        .from('notifications')
-        .delete()
-        .lt('expires_at', now)
-        .not('expires_at', 'is', null)
-        .select('id');
-
-      if (error) {
-        console.error('Error cleaning up expired notifications:', error);
-        return 0;
+        if (error) throw error;
+        result = data;
       }
 
-      return data ? data.length : 0;
+      return result;
     } catch (error) {
-      console.error('Exception in cleanupExpiredNotifications:', error);
-      return 0;
+      console.error('Error updating notification preferences:', error);
+      throw new Error(`Failed to update notification preferences: ${error.message}`);
     }
   }
 }
 
-// Instancja singletona
+// Create and export a singleton instance
 export const notificationService = new NotificationService();

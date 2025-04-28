@@ -95,12 +95,12 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
     }
 
-    // Zaktualizuj powiadomienie
+    // Zaktualizuj powiadomienie - używając bezpośredniego update zamiast service dla większej kontroli
     const { data, error } = await supabaseAdmin
       .from('notifications')
       .update({
-        is_read,
-        read_at: is_read ? new Date().toISOString() : null
+        is_read
+        // Usunięto read_at, które nie istnieje w schemacie
       })
       .eq('id', id)
       .eq('user_id', userProfile.id)

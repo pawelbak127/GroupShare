@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import NotificationRealtime from './NotificationRealtime';
 import { toast } from '@/lib/utils/notification';
@@ -17,6 +17,7 @@ export const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
   const { isSignedIn, isLoaded } = useUser();
 
   // Pobierz licznik nieprzeczytanych powiadomień
@@ -76,7 +77,7 @@ export const NotificationProvider = ({ children }) => {
     setNotifications(prev => [notification, ...prev.slice(0, 9)]);
     
     // Odśwież dane, jeśli jesteśmy na stronie powiadomień
-    if (router.pathname === '/notifications') {
+    if (pathname === '/notifications') {
       router.refresh();
     }
   };
@@ -96,7 +97,7 @@ export const NotificationProvider = ({ children }) => {
     }
     
     // Odśwież dane, jeśli jesteśmy na stronie powiadomień
-    if (router.pathname === '/notifications') {
+    if (pathname === '/notifications') {
       router.refresh();
     }
   };
@@ -123,7 +124,7 @@ export const NotificationProvider = ({ children }) => {
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       
       // Odśwież stronę, jeśli jesteśmy na /notifications
-      if (router.pathname === '/notifications') {
+      if (pathname === '/notifications') {
         router.refresh();
       }
       
