@@ -1,8 +1,9 @@
 {
-  "/api/notifications/count/route": "app/api/notifications/count/route.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/page": "app/page.js",
   "/offers/page": "app/offers/page.js",
-  "/purchases/page": "app/purchases/page.js",
-  "/purchases/[id]/details/page": "app/purchases/[id]/details/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/notifications/page": "app/notifications/page.js"
+  "/api/offers/route": "app/api/offers/route.js",
+  "/api/notifications/count/route": "app/api/notifications/count/route.js",
+  "/api/platforms/route": "app/api/platforms/route.js",
+  "/api/offers/[id]/purchase/route": "app/api/offers/[id]/purchase/route.js"
 }

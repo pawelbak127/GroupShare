@@ -14,7 +14,7 @@ import {
   getNotificationIconConfig,
   getNotificationBackgroundColor,
   getEntityBadgeConfig 
-} from '@/lib/utils/notification-utils';
+} from '@/lib/utils/notification';
 import dynamic from 'next/dynamic';
 
 // Dynamically import icons to reduce bundle size

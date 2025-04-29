@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser } from '@clerk/nextjs';
-import { toast } from '@/lib/utils/notification';
+import { toast } from '@/lib/utils/notification-utils';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import NotificationAutoMark from '@/components/notifications/NotificationAutoMark';
 

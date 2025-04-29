@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
     CheckIcon, 
-    TrashIcon 
+    TrashIcon,
+    EyeIcon
   } from '@heroicons/react/24/outline';
-import { formatDistanceToNow, parseISO } from 'date-fns';
+import { formatDistanceToNow, parseISO, format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { toast } from '@/lib/utils/notification';
 import { 
@@ -14,7 +15,7 @@ import {
   getNotificationIconConfig,
   getNotificationBackgroundColor,
   getEntityBadgeConfig
-} from '@/lib/utils/notification-utils';
+} from '@/lib/utils/notification';
 import dynamic from 'next/dynamic';
 
 // Dynamically import icons to reduce bundle size
@@ -32,11 +33,17 @@ const NotificationCard = ({ notification, onMarkAsRead, onDelete }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isMarkingRead, setIsMarkingRead] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const router = useRouter();
 
   // Date formatting
   const formattedDate = notification.created_at 
     ? formatDistanceToNow(parseISO(notification.created_at), { addSuffix: true, locale: pl }) 
+    : '';
+  
+  // Full date for expanded view
+  const fullDate = notification.created_at
+    ? format(parseISO(notification.created_at), 'PPP HH:mm', { locale: pl })
     : '';
 
   // Get icon config
@@ -59,12 +66,14 @@ const NotificationCard = ({ notification, onMarkAsRead, onDelete }) => {
         console.log("Redirecting to:", link);
         router.push(link);
       } else {
-        // Show info if no link
-        console.log("No available link for notification");
-        toast.info('Nie można otworzyć szczegółów tego powiadomienia');
+        // If no link, just toggle expanded state
+        setIsExpanded(!isExpanded);
       }
     } catch (error) {
       console.error('Error handling notification click:', error);
+      
+      // Toggle expanded state on error
+      setIsExpanded(!isExpanded);
       
       // Redirect anyway if there's a link, even if marking as read failed
       if (link) {
@@ -124,9 +133,50 @@ const NotificationCard = ({ notification, onMarkAsRead, onDelete }) => {
     ? getEntityBadgeConfig(notification.related_entity_type)
     : null;
 
+  // Get action button based on notification type
+  const getActionButton = () => {
+    // Only show action button if there's a link
+    const link = getNotificationLink(notification);
+    if (!link) return null;
+    
+    return (
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          router.push(link);
+        }}
+        className="mt-3 inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm leading-4 font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+      >
+        <EyeIcon className="h-4 w-4 mr-1" />
+        {getActionLabel()}
+      </button>
+    );
+  };
+
+  // Get action label based on notification type
+  const getActionLabel = () => {
+    switch (notification.type) {
+      case 'purchase_completed':
+      case 'purchase':
+        return 'Zobacz szczegóły';
+      case 'dispute':
+      case 'dispute_filed':
+      case 'dispute_created':
+        return 'Przejdź do sporu';
+      case 'invite':
+        return 'Zobacz zaproszenie';
+      case 'message':
+        return 'Przejdź do wiadomości';
+      case 'sale_completed':
+        return 'Zobacz sprzedaż';
+      default:
+        return 'Szczegóły';
+    }
+  };
+
   return (
     <div
-      className={`${getNotificationBackgroundColor(notification)} relative p-6 cursor-pointer`}
+      className={`${getNotificationBackgroundColor(notification)} relative p-6 cursor-pointer transition-all duration-200 ${isExpanded ? 'border-l-4 border-indigo-500' : ''}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={handleClick}
@@ -146,20 +196,51 @@ const NotificationCard = ({ notification, onMarkAsRead, onDelete }) => {
             <span className="text-sm text-gray-500 ml-2 whitespace-nowrap">{formattedDate}</span>
           </div>
           
-          <p className="mt-1 text-sm text-gray-600">{notification.content}</p>
+          <p className="mt-1 text-sm text-gray-600">
+            {isExpanded 
+              ? notification.content 
+              : notification.content.length > 120
+                ? `${notification.content.substring(0, 120)}...`
+                : notification.content
+            }
+          </p>
           
           {/* Additional info */}
-          {entityBadge && (
-            <div className="mt-2 flex items-center">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {entityBadge && (
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${entityBadge.color}-100 text-${entityBadge.color}-800`}>
                 {entityBadge.text}
               </span>
-              
-              {!notification.is_read && (
-                <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                  Nowe
-                </span>
+            )}
+            
+            {!notification.is_read && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                Nowe
+              </span>
+            )}
+            
+            {notification.priority === 'high' && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                Ważne
+              </span>
+            )}
+          </div>
+          
+          {/* Action button and expanded info */}
+          {(isExpanded || isHovered) && (
+            <div className="mt-3">
+              {isExpanded && (
+                <div className="mt-2 mb-3 text-xs text-gray-500">
+                  <p>Data utworzenia: {fullDate}</p>
+                  {notification.related_entity_type && notification.related_entity_id && (
+                    <p className="mt-1">
+                      Powiązana encja: {notification.related_entity_type} (ID: {notification.related_entity_id})
+                    </p>
+                  )}
+                </div>
               )}
+              
+              {getActionButton()}
             </div>
           )}
         </div>

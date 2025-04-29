@@ -1,3 +1,4 @@
+
 // src/services/payment/payment-service.js
 import supabaseAdmin from '@/lib/database/supabase-admin-client';
 import { tokenService } from '@/lib/security/token-service';
@@ -158,6 +159,11 @@ export class PaymentService {
         throw new Error('Oferta nie jest już aktywna');
       }
       
+      if (!slotsAlreadyDecremented && (offer.slots_available <= 0 || isNaN(offer.slots_available))) {
+        console.warn(`No available slots for offer ${offer.id}`);
+        throw new Error('Brak dostępnych miejsc w tej ofercie');
+      }
+      
       // 5. Utwórz transakcję
       console.log(`Creating transaction for purchase ${purchaseId}`);
       transactionId = await this.createTransaction(
@@ -225,25 +231,15 @@ export class PaymentService {
       console.log(`Access token generated: ${tokenId}`);
       completedSteps.tokenGenerated = true;
       
-      // 11. Wyślij jedno konsolidowane powiadomienie o zakupie
+      // 11. Wyślij SKONSOLIDOWANE powiadomienie o zakupie (REFAKTORYZACJA)
       try {
-        // Wykorzystujemy nową funkcję serwisu powiadomień, która konsoliduje wszystkie informacje
-        await this.notificationService.createTransactionNotification(
-          userId, 
-          transactionId, 
-          purchaseId, 
-          'completed'
-        );
-        
-        // Powiadomienie dla sprzedającego
-        await this.notificationService.createNotification(
-          offer.groups?.owner_id,
-          'sale_completed',
-          'Sprzedaż zakończona pomyślnie',
-          'Ktoś właśnie kupił miejsce w Twojej subskrypcji.',
-          'purchase',
-          purchaseId
-        );
+        // Używamy ulepszonej funkcji serwisu powiadomień
+        await this.notificationService.createTransactionNotification({
+          transactionId,
+          purchaseId,
+          status: 'completed',
+          sendToSeller: true
+        });
         
         completedSteps.notificationSent = true;
       } catch (notificationError) {
@@ -284,12 +280,11 @@ export class PaymentService {
             // Spróbuj wysłać powiadomienie o częściowym sukcesie
             if (!completedSteps.notificationSent && transactionId) {
               try {
-                await this.notificationService.createTransactionNotification(
-                  userId, 
-                  transactionId, 
-                  purchaseId, 
-                  'completed'
-                );
+                await this.notificationService.createTransactionNotification({
+                  transactionId,
+                  purchaseId,
+                  status: 'completed'
+                });
               } catch (notifError) {
                 console.warn('Failed to send notification during recovery');
               }
@@ -320,12 +315,11 @@ export class PaymentService {
       // spróbuj wysłać powiadomienie o błędzie
       if (completedSteps.transactionCreated && transactionId) {
         try {
-          await this.notificationService.createTransactionNotification(
-            userId,
+          await this.notificationService.createTransactionNotification({
             transactionId,
             purchaseId,
-            'failed'
-          );
+            status: 'failed'
+          });
         } catch (notifError) {
           console.warn('Failed to send failure notification:', notifError);
         }
@@ -704,27 +698,13 @@ export class PaymentService {
       throw new Error('Nie udało się utworzyć sporu: ' + error.message);
     }
     
-    // Powiadomienia - używamy nowego servisu powiadomień
-    await this.notificationService.createNotification(
-      userId,
-      'dispute_created',
-      'Zgłoszenie problemu z dostępem',
-      'Twoje zgłoszenie zostało zarejestrowane. Skontaktujemy się z Tobą wkrótce.',
-      'dispute',
-      dispute.id
-    );
-    
-    // Powiadomienie dla sprzedającego
-    if (transaction.seller_id) {
-      await this.notificationService.createNotification(
-        transaction.seller_id,
-        'dispute_filed',
-        'Zgłoszono problem z dostępem',
-        'Kupujący zgłosił problem z dostępem do Twojej subskrypcji. Prosimy o pilną weryfikację.',
-        'dispute',
-        dispute.id
-      );
-    }
+    // Użyj nowej skonsolidowanej metody do wysyłania powiadomień o sporze
+    await this.notificationService.createDisputeNotifications({
+      disputeId: dispute.id,
+      reporterId: userId,
+      reportedId: transaction.seller_id,
+      type: 'access'
+    });
     
     return dispute.id;
   }

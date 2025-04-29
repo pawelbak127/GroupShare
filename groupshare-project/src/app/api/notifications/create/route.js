@@ -68,14 +68,7 @@ export async function POST(request) {
         .eq('external_auth_id', user.id)
         .single();
       
-      if (error) {
-        console.error('Error fetching user profile:', error);
-        return NextResponse.json(
-          { error: 'Failed to fetch user profile', details: error.message },
-          { status: 500 }
-        );
-      }
-      
+      if (error) throw error;
       if (!userProfile) {
         return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
       }
@@ -92,6 +85,42 @@ export async function POST(request) {
         }
       }
       
+      // Check if API is being used for consolidated notifications
+      if (notificationData.consolidatedType) {
+        let result;
+        
+        switch (notificationData.consolidatedType) {
+          case 'transaction':
+            // Handle transaction notifications (both buyer and seller)
+            result = await notificationService.createTransactionNotification({
+              transactionId: notificationData.relatedEntityId,
+              purchaseId: notificationData.purchaseId,
+              status: notificationData.status || 'completed',
+              sendToSeller: notificationData.sendToSeller !== false
+            });
+            break;
+            
+          case 'dispute':
+            // Handle dispute notifications (reporter and reported)
+            result = await notificationService.createDisputeNotifications({
+              disputeId: notificationData.relatedEntityId,
+              reporterId: notificationData.reporterId,
+              reportedId: notificationData.reportedId,
+              type: notificationData.disputeType || 'access'
+            });
+            break;
+            
+          default:
+            return NextResponse.json(
+              { error: `Unknown consolidated notification type: ${notificationData.consolidatedType}` },
+              { status: 400 }
+            );
+        }
+        
+        return NextResponse.json(result || []);
+      }
+      
+      // Regular single notification creation
       // Verify entity exists if entity is specified
       if (notificationData.relatedEntityType && notificationData.relatedEntityId) {
         const entityExists = await notificationService.verifyEntityExists(
@@ -108,7 +137,7 @@ export async function POST(request) {
       }
       
       // Check for duplicate notifications
-      if (notificationData.relatedEntityType && notificationData.relatedEntityId) {
+      if (notificationData.relatedEntityType && notificationData.relatedEntityId && !notificationData.skipDuplicateCheck) {
         const hasDuplicate = await notificationService.checkForDuplicateNotification(
           notificationData.userId,
           notificationData.type,
@@ -116,7 +145,7 @@ export async function POST(request) {
           notificationData.relatedEntityId
         );
         
-        if (hasDuplicate && !notificationData.skipDuplicateCheck) {
+        if (hasDuplicate) {
           return NextResponse.json(
             { error: 'Similar notification already exists for this entity', skipDuplicateCheck: true },
             { status: 409 }
