@@ -4,98 +4,83 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   CheckIcon, 
-  XMarkIcon, 
-  EnvelopeIcon, 
-  TicketIcon, 
-  ExclamationTriangleIcon, 
-  UserPlusIcon 
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 import { formatDistanceToNow } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { toast } from '@/lib/utils/notification';
+import { 
+  getNotificationLink,
+  getNotificationIconConfig,
+  getNotificationBackgroundColor,
+  getEntityBadgeConfig 
+} from '@/lib/utils/notification-utils';
+import dynamic from 'next/dynamic';
+
+// Dynamically import icons to reduce bundle size
+const DynamicIcon = ({ name, className }) => {
+  const Icon = dynamic(() => 
+    import('@heroicons/react/24/outline').then((mod) => mod[name + 'Icon'])
+  );
+  return <Icon className={className} />;
+};
 
 /**
- * Komponent pojedynczego powiadomienia w rozwijanym menu
+ * Component for a single notification item in dropdown
  */
 const NotificationItem = ({ notification, onMarkAsRead, closeDropdown }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isMarkingRead, setIsMarkingRead] = useState(false);
   const router = useRouter();
   
-  // Formatowanie daty do postaci "X minut temu"
+  // Format date as "X minutes ago"
   const formattedDate = notification.created_at
     ? formatDistanceToNow(new Date(notification.created_at), { addSuffix: true, locale: pl })
     : '';
 
-  // Generowanie linku w zależności od typu powiadomienia
-  const getNotificationLink = () => {
-    if (!notification.related_entity_type || !notification.related_entity_id) {
-      console.warn("Brak related_entity_type lub related_entity_id w powiadomieniu:", notification);
-      return '/notifications';
-    }
+  // Get notification icon config
+  const iconConfig = getNotificationIconConfig(notification.type);
 
-    // Dodaj parametr from_notification=true do URL
-    switch (notification.related_entity_type) {
-      case 'group':
-        return `/groups/${notification.related_entity_id}?from_notification=true`;
-      case 'group_invitation':
-        // W przypadku zaproszenia, używamy kodu zaproszenia w URL
-        return `/groups/join?code=${notification.related_entity_id}&from_notification=true`;
-      case 'purchase':
-      case 'purchase_record': // Obsługa purchase_record z bazy danych
-        return `/purchases/${notification.related_entity_id}/details?from_notification=true`;
-      case 'dispute':
-        return `/disputes/${notification.related_entity_id}?from_notification=true`;
-      case 'transaction':
-        // Dla transakcji, przekierowujemy do szczegółów zakupu, ale z parametrem transactionId=true
-        return `/purchases/${notification.related_entity_id}/details?transactionId=true&from_notification=true`;
-      case 'conversation':
-        return `/messages/${notification.related_entity_id}?from_notification=true`;
-      default:
-        console.warn(`Nieobsługiwany typ encji w powiadomieniu: ${notification.related_entity_type}`, notification);
-        return '/notifications';
-    }
-  };
+  // Get notification background color
+  const backgroundColor = getNotificationBackgroundColor(notification);
 
-  // Generowanie ikony w zależności od typu powiadomienia
-  const getNotificationIcon = () => {
-    switch (notification.type) {
-      case 'invite':
-        return <UserPlusIcon className="h-5 w-5 text-indigo-500" />;
-      case 'message':
-        return <EnvelopeIcon className="h-5 w-5 text-blue-500" />;
-      case 'purchase':
-        return <TicketIcon className="h-5 w-5 text-green-500" />;
-      case 'dispute':
-      case 'dispute_filed':
-      case 'dispute_created':
-        return <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />;
-      case 'payment':
-        return <TicketIcon className="h-5 w-5 text-green-500" />;
-      case 'access':
-        return <EnvelopeIcon className="h-5 w-5 text-blue-500" />;
-      default:
-        return <EnvelopeIcon className="h-5 w-5 text-gray-400" />;
-    }
-  };
-
-  // Generowanie koloru dla powiadomienia w zależności od priorytetu
-  const getNotificationColor = () => {
-    if (!notification.is_read) {
-      return 'bg-indigo-50 hover:bg-indigo-100';
-    }
+  // Handle notification click
+  const handleNotificationClick = async (e) => {
+    e.preventDefault();
+    console.log("Clicking on notification from dropdown:", notification);
     
-    switch (notification.priority) {
-      case 'high':
-        return 'hover:bg-red-50';
-      case 'low':
-        return 'hover:bg-gray-50';
-      default:
-        return 'hover:bg-gray-50';
+    // Get target link
+    const link = getNotificationLink(notification);
+    console.log("Target link:", link);
+    
+    try {
+      // First mark as read if needed
+      if (!notification.is_read) {
+        await handleMarkAsRead(e);
+      }
+      
+      // Close dropdown
+      if (typeof closeDropdown === 'function') {
+        closeDropdown();
+      }
+      
+      // Redirect to appropriate page
+      console.log("Redirecting to:", link);
+      router.push(link);
+    } catch (error) {
+      console.error('Error handling notification click:', error);
+      
+      // Close dropdown even on error
+      if (typeof closeDropdown === 'function') {
+        closeDropdown();
+      }
+      
+      // Redirect anyway
+      router.push(link);
     }
   };
 
-  // Obsługa oznaczania jako przeczytane
+  // Handle marking as read
   const handleMarkAsRead = async (e) => {
     if (e) {
       e.preventDefault();
@@ -115,46 +100,15 @@ const NotificationItem = ({ notification, onMarkAsRead, closeDropdown }) => {
       setIsMarkingRead(false);
     }
   };
-  
-  // Obsługa kliknięcia na powiadomienie
-  const handleNotificationClick = async (e) => {
-    e.preventDefault();
-    console.log("Kliknięcie w powiadomienie z dropdown:", notification);
-    
-    // Pobierz link docelowy
-    const link = getNotificationLink();
-    console.log("Link docelowy:", link);
-    
-    try {
-      // Najpierw oznaczamy jako przeczytane jeśli trzeba
-      if (!notification.is_read) {
-        await handleMarkAsRead(e);
-      }
-      
-      // Zamknij dropdown
-      if (typeof closeDropdown === 'function') {
-        closeDropdown();
-      }
-      
-      // Przekieruj na odpowiednią stronę
-      console.log("Przekierowuję do:", link);
-      router.push(link);
-    } catch (error) {
-      console.error('Błąd podczas obsługi kliknięcia w powiadomienie:', error);
-      
-      // Zamknij dropdown nawet w przypadku błędu
-      if (typeof closeDropdown === 'function') {
-        closeDropdown();
-      }
-      
-      // Przekieruj mimo błędu
-      router.push(link);
-    }
-  };
+
+  // Get entity badge (if needed)
+  const entityBadge = notification.related_entity_type 
+    ? getEntityBadgeConfig(notification.related_entity_type)
+    : null;
 
   return (
     <li
-      className={`${getNotificationColor()} relative`}
+      className={`${backgroundColor} relative`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -164,7 +118,7 @@ const NotificationItem = ({ notification, onMarkAsRead, closeDropdown }) => {
       >
         <div className="flex items-start">
           <div className="flex-shrink-0 mr-3">
-            {getNotificationIcon()}
+            <DynamicIcon name={iconConfig.name} className={`h-5 w-5 text-${iconConfig.color}`} />
           </div>
           
           <div className="flex-1 min-w-0">
@@ -173,16 +127,25 @@ const NotificationItem = ({ notification, onMarkAsRead, closeDropdown }) => {
             </div>
             <p className="text-sm text-gray-500 mt-1 line-clamp-2">{notification.content}</p>
             <p className="text-xs text-gray-400 mt-1">{formattedDate}</p>
+            
+            {/* Display entity badge if applicable */}
+            {entityBadge && (
+              <div className="mt-1">
+                <span className={`inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-${entityBadge.color}-100 text-${entityBadge.color}-800`}>
+                  {entityBadge.text}
+                </span>
+              </div>
+            )}
           </div>
           
-          {/* Wskaźnik nieprzeczytanego powiadomienia */}
+          {/* Unread indicator */}
           {!notification.is_read && (
             <span className="h-2 w-2 bg-indigo-600 rounded-full flex-shrink-0 ml-2 mt-2"></span>
           )}
         </div>
       </div>
       
-      {/* Przycisk oznaczenia jako przeczytane */}
+      {/* Mark as read button */}
       {isHovered && !notification.is_read && (
         <button
           className="absolute top-2 right-2 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200"

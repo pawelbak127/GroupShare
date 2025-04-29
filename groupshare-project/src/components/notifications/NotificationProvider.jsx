@@ -1,26 +1,27 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import NotificationRealtime from './NotificationRealtime';
 import { toast } from '@/lib/utils/notification';
 
-// Tworzenie kontekstu powiadomień
+// Create notifications context
 const NotificationContext = createContext(null);
 
 /**
- * Provider kontekstu dla systemu powiadomień
+ * Provider for the notification system
  */
 export const NotificationProvider = ({ children }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState(0);
   const router = useRouter();
   const pathname = usePathname();
   const { isSignedIn, isLoaded } = useUser();
 
-  // Pobierz licznik nieprzeczytanych powiadomień
+  // Fetch unread count
   useEffect(() => {
     const fetchUnreadCount = async () => {
       if (!isSignedIn || !isLoaded) {
@@ -47,14 +48,31 @@ export const NotificationProvider = ({ children }) => {
 
     if (isLoaded) {
       fetchUnreadCount();
+      
+      // Set up periodic refresh
+      const refreshInterval = setInterval(() => {
+        if (isSignedIn) {
+          fetchUnreadCount();
+        }
+      }, 60000); // Refresh every minute
+      
+      return () => clearInterval(refreshInterval);
     }
   }, [isSignedIn, isLoaded]);
 
-  // Pobierz ostatnie powiadomienia
-  const fetchRecentNotifications = async () => {
+  // Fetch recent notifications (memoized)
+  const fetchRecentNotifications = useCallback(async () => {
     if (!isSignedIn) return;
     
+    // Throttle refreshes to avoid excessive API calls
+    const now = Date.now();
+    if (now - lastRefresh < 10000) { // 10 second cooldown
+      console.log('Throttling notification refresh');
+      return;
+    }
+    
     try {
+      setIsLoading(true);
       const response = await fetch('/api/notifications?pageSize=10');
       
       if (!response.ok) {
@@ -63,48 +81,51 @@ export const NotificationProvider = ({ children }) => {
       
       const data = await response.json();
       setNotifications(data.notifications || []);
+      setLastRefresh(now);
     } catch (error) {
       console.error('Error fetching notifications:', error);
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, [isSignedIn, lastRefresh]);
 
-  // Obsługa nowego powiadomienia
-  const handleNewNotification = (notification) => {
-    // Zwiększ licznik nieprzeczytanych
+  // Handle new notification
+  const handleNewNotification = useCallback((notification) => {
+    // Increase unread count
     setUnreadCount(prev => prev + 1);
     
-    // Dodaj do listy powiadomień
+    // Add to notifications list
     setNotifications(prev => [notification, ...prev.slice(0, 9)]);
     
-    // Odśwież dane, jeśli jesteśmy na stronie powiadomień
+    // Refresh page if we're on the notifications page
     if (pathname === '/notifications') {
       router.refresh();
     }
-  };
+  }, [pathname, router]);
 
-  // Obsługa aktualizacji powiadomienia
-  const handleNotificationUpdate = (updatedNotification) => {
-    // Aktualizuj lokalną listę
+  // Handle notification update
+  const handleNotificationUpdate = useCallback((updatedNotification) => {
+    // Update local list
     setNotifications(prev => 
       prev.map(notification => 
         notification.id === updatedNotification.id ? updatedNotification : notification
       )
     );
     
-    // Aktualizuj licznik nieprzeczytanych
+    // Update unread count if notification was marked as read
     if (updatedNotification.is_read) {
       setUnreadCount(prev => Math.max(0, prev - 1));
     }
     
-    // Odśwież dane, jeśli jesteśmy na stronie powiadomień
+    // Refresh page if we're on the notifications page
     if (pathname === '/notifications') {
       router.refresh();
     }
-  };
+  }, [pathname, router]);
 
-  // Oznacz wszystkie jako przeczytane
-  const markAllAsRead = async () => {
-    if (!isSignedIn) return;
+  // Mark all as read (memoized)
+  const markAllAsRead = useCallback(async () => {
+    if (!isSignedIn) return false;
     
     try {
       const response = await fetch('/api/notifications', {
@@ -119,11 +140,11 @@ export const NotificationProvider = ({ children }) => {
         throw new Error('Failed to mark notifications as read');
       }
       
-      // Aktualizuj stan
+      // Update state
       setUnreadCount(0);
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       
-      // Odśwież stronę, jeśli jesteśmy na /notifications
+      // Refresh page if we're on the notifications page
       if (pathname === '/notifications') {
         router.refresh();
       }
@@ -134,13 +155,14 @@ export const NotificationProvider = ({ children }) => {
       toast.error('Nie udało się oznaczyć powiadomień jako przeczytane');
       return false;
     }
-  };
+  }, [isSignedIn, pathname, router]);
 
-  // Wartość kontekstu
+  // Context value
   const value = {
     unreadCount,
     setUnreadCount,
     notifications,
+    setNotifications,
     isLoading,
     fetchRecentNotifications,
     markAllAsRead
@@ -159,7 +181,7 @@ export const NotificationProvider = ({ children }) => {
 };
 
 /**
- * Hook do używania kontekstu powiadomień
+ * Hook to use the notifications context
  */
 export const useNotifications = () => {
   const context = useContext(NotificationContext);

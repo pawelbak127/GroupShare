@@ -6,11 +6,11 @@ import { notificationService } from '@/services/notification/notification-servic
 
 /**
  * POST /api/notifications/create
- * Tworzy nowe powiadomienie
+ * Creates a new notification with improved error handling
  */
 export async function POST(request) {
   try {
-    // Sprawdź czy supabaseAdmin został poprawnie zainicjalizowany
+    // Check if supabaseAdmin is properly initialized
     if (!supabaseAdmin) {
       console.error('supabaseAdmin is not initialized');
       return NextResponse.json(
@@ -22,16 +22,16 @@ export async function POST(request) {
       );
     }
 
-    // Sprawdź autentykację
+    // Check authentication
     const user = await currentUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Pobierz dane z body
+    // Get data from request body
     const notificationData = await request.json();
     
-    // Walidacja pól obowiązkowych
+    // Validate required fields
     if (!notificationData.userId || !notificationData.type || !notificationData.title || !notificationData.content) {
       return NextResponse.json(
         { error: 'Missing required fields: userId, type, title and content are required' },
@@ -39,8 +39,9 @@ export async function POST(request) {
       );
     }
     
-    // Sprawdź poprawność typu powiadomienia
-    const validTypes = ['invite', 'message', 'purchase', 'dispute'];
+    // Check notification type validity
+    const validTypes = ['invite', 'message', 'purchase', 'purchase_completed', 'purchase_failed', 
+                         'dispute', 'dispute_filed', 'dispute_created', 'payment', 'access', 'sale_completed'];
     if (!validTypes.includes(notificationData.type)) {
       return NextResponse.json(
         { error: `Invalid notification type. Must be one of: ${validTypes.join(', ')}` },
@@ -48,7 +49,7 @@ export async function POST(request) {
       );
     }
     
-    // Sprawdź poprawność priorytetu powiadomienia jeśli podany
+    // Check priority validity if provided
     if (notificationData.priority) {
       const validPriorities = ['high', 'normal', 'low'];
       if (!validPriorities.includes(notificationData.priority)) {
@@ -59,8 +60,8 @@ export async function POST(request) {
       }
     }
     
-    // Pobierz ID profilu użytkownika wysyłającego powiadomienie
     try {
+      // Get user profile ID of the sender
       const { data: userProfile, error } = await supabaseAdmin
         .from('user_profiles')
         .select('id')
@@ -79,7 +80,7 @@ export async function POST(request) {
         return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
       }
       
-      // Sprawdź uprawnienia tylko jeśli wysyłamy powiadomienie dla innego użytkownika
+      // Check permissions only if sending notification to another user
       if (notificationData.userId !== userProfile.id) {
         const isAllowed = await checkPermissionToNotify(userProfile.id, notificationData.userId, notificationData);
         
@@ -91,25 +92,58 @@ export async function POST(request) {
         }
       }
       
-      // Utwórz powiadomienie
-      try {
-        const notification = await notificationService.createNotification(
-          notificationData.userId,
-          notificationData.type,
-          notificationData.title,
-          notificationData.content,
-          notificationData.relatedEntityType || null,
-          notificationData.relatedEntityId || null,
-          notificationData.priority || 'normal',
-          notificationData.ttl || 0
+      // Verify entity exists if entity is specified
+      if (notificationData.relatedEntityType && notificationData.relatedEntityId) {
+        const entityExists = await notificationService.verifyEntityExists(
+          notificationData.relatedEntityType,
+          notificationData.relatedEntityId
         );
         
+        if (!entityExists) {
+          return NextResponse.json(
+            { error: `Referenced entity ${notificationData.relatedEntityType}:${notificationData.relatedEntityId} does not exist` },
+            { status: 404 }
+          );
+        }
+      }
+      
+      // Check for duplicate notifications
+      if (notificationData.relatedEntityType && notificationData.relatedEntityId) {
+        const hasDuplicate = await notificationService.checkForDuplicateNotification(
+          notificationData.userId,
+          notificationData.type,
+          notificationData.relatedEntityType,
+          notificationData.relatedEntityId
+        );
+        
+        if (hasDuplicate && !notificationData.skipDuplicateCheck) {
+          return NextResponse.json(
+            { error: 'Similar notification already exists for this entity', skipDuplicateCheck: true },
+            { status: 409 }
+          );
+        }
+      }
+      
+      // Create notification using notification service
+      const notification = await notificationService.createNotification(
+        notificationData.userId,
+        notificationData.type,
+        notificationData.title,
+        notificationData.content,
+        notificationData.relatedEntityType || null,
+        notificationData.relatedEntityId || null,
+        notificationData.priority || 'normal',
+        notificationData.ttl || 0,
+        notificationData.skipDuplicateCheck || false
+      );
+      
+      // Return created notification or success message if creation failed silently
+      if (notification) {
         return NextResponse.json(notification);
-      } catch (notificationError) {
-        console.error('Error creating notification:', notificationError);
+      } else {
         return NextResponse.json(
-          { error: 'Failed to create notification', details: notificationError.message },
-          { status: 500 }
+          { message: 'Notification may have been created or skipped due to duplication check' },
+          { status: 202 }
         );
       }
     } catch (dbError) {
@@ -129,15 +163,15 @@ export async function POST(request) {
 }
 
 /**
- * Sprawdza, czy użytkownik ma uprawnienia do wysyłania powiadomień do innego użytkownika
- * @param {string} senderId - ID użytkownika wysyłającego
- * @param {string} recipientId - ID użytkownika otrzymującego
- * @param {Object} notificationData - Dane powiadomienia
- * @returns {Promise<boolean>} - Czy użytkownik ma uprawnienia
+ * Check if a user has permission to send notifications to another user
+ * @param {string} senderId - ID of the sending user
+ * @param {string} recipientId - ID of the receiving user
+ * @param {Object} notificationData - Notification data
+ * @returns {Promise<boolean>} - Whether the user has permission
  */
 async function checkPermissionToNotify(senderId, recipientId, notificationData) {
   try {
-    // Sprawdź, czy użytkownik jest administratorem systemu
+    // Check if the user is a system admin
     const { data: senderProfile } = await supabaseAdmin
       .from('user_profiles')
       .select('is_admin')
@@ -148,12 +182,12 @@ async function checkPermissionToNotify(senderId, recipientId, notificationData) 
       return true;
     }
     
-    // Sprawdź, czy użytkownik jest właścicielem grupy, której dotyczy powiadomienie
+    // Check if the user is the owner of the group related to the notification
     if (notificationData.relatedEntityType === 'group' || notificationData.relatedEntityType === 'group_invitation') {
       let groupId = notificationData.relatedEntityId;
       
       if (notificationData.relatedEntityType === 'group_invitation') {
-        // Pobierz grupę z zaproszenia
+        // Get the group from the invitation
         const { data: invitation } = await supabaseAdmin
           .from('group_invitations')
           .select('group_id')
@@ -164,7 +198,7 @@ async function checkPermissionToNotify(senderId, recipientId, notificationData) 
       }
       
       if (groupId) {
-        // Sprawdź, czy użytkownik jest właścicielem grupy
+        // Check if the user is the group owner
         const { data: group } = await supabaseAdmin
           .from('groups')
           .select('owner_id')
@@ -175,7 +209,7 @@ async function checkPermissionToNotify(senderId, recipientId, notificationData) 
           return true;
         }
         
-        // Sprawdź, czy użytkownik jest administratorem grupy
+        // Check if the user is a group admin
         const { data: membership } = await supabaseAdmin
           .from('group_members')
           .select('role')
@@ -190,25 +224,40 @@ async function checkPermissionToNotify(senderId, recipientId, notificationData) 
       }
     }
     
-    // Sprawdź, czy użytkownik jest sprzedawcą subskrypcji, której dotyczy powiadomienie
-    if (notificationData.relatedEntityType === 'purchase') {
-      const { data: purchase } = await supabaseAdmin
-        .from('purchase_records')
-        .select(`
-          group_sub:group_subs(
-            group_id,
-            groups(owner_id)
-          )
-        `)
-        .eq('id', notificationData.relatedEntityId)
-        .single();
-        
-      if (purchase?.group_sub?.groups?.owner_id === senderId) {
-        return true;
+    // Check if the user is the seller of the subscription related to the notification
+    if (['purchase', 'purchase_record', 'transaction'].includes(notificationData.relatedEntityType)) {
+      let purchaseId = notificationData.relatedEntityId;
+      
+      // If it's a transaction, get the purchase_record_id
+      if (notificationData.relatedEntityType === 'transaction') {
+        const { data: transaction } = await supabaseAdmin
+          .from('transactions')
+          .select('purchase_record_id')
+          .eq('id', notificationData.relatedEntityId)
+          .single();
+          
+        purchaseId = transaction?.purchase_record_id;
+      }
+      
+      if (purchaseId) {
+        const { data: purchase } = await supabaseAdmin
+          .from('purchase_records')
+          .select(`
+            group_sub:group_subs(
+              group_id,
+              groups(owner_id)
+            )
+          `)
+          .eq('id', purchaseId)
+          .single();
+          
+        if (purchase?.group_sub?.groups?.owner_id === senderId) {
+          return true;
+        }
       }
     }
     
-    // W innych przypadkach domyślnie odmawiamy uprawnień
+    // Default deny permission
     return false;
   } catch (error) {
     console.error('Error checking notification permissions:', error);

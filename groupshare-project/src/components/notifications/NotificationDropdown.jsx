@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { 
-    ArrowPathIcon as RefreshIcon, 
+    ArrowPathIcon, 
     CheckIcon, 
     ArrowRightIcon,
     XMarkIcon
@@ -12,7 +12,7 @@ import NotificationItem from './NotificationItem';
 import { toast } from '@/lib/utils/notification';
 
 /**
- * Dropdown z listą ostatnich powiadomień
+ * Dropdown component with recent notifications list
  */
 const NotificationDropdown = ({
   notifications = [],
@@ -21,12 +21,12 @@ const NotificationDropdown = ({
   onMarkAllAsRead,
   onRefresh,
   setUnreadCount,
-  closeDropdown // Nowa funkcja do zamykania dropdownu
+  closeDropdown // Function to close dropdown
 }) => {
   const [markingRead, setMarkingRead] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Obsługa oznaczania pojedynczego powiadomienia jako przeczytane
+  // Handle marking individual notification as read
   const handleMarkAsRead = async (notificationId) => {
     try {
       const response = await fetch(`/api/notifications/${notificationId}`, {
@@ -41,15 +41,15 @@ const NotificationDropdown = ({
         throw new Error('Failed to mark notification as read');
       }
 
-      // Aktualizuj stan 
+      // Update state 
       setUnreadCount(prev => Math.max(0, prev - 1));
       
-      // Zaktualizuj listę powiadomień lokalnie
+      // Update notifications list locally
       const updatedNotifications = notifications.map(notif => 
         notif.id === notificationId ? { ...notif, is_read: true } : notif
       );
       
-      console.log(`Powiadomienie ${notificationId} oznaczone jako przeczytane`);
+      console.log(`Notification ${notificationId} marked as read`);
       
       return updatedNotifications;
     } catch (err) {
@@ -59,7 +59,7 @@ const NotificationDropdown = ({
     }
   };
 
-  // Obsługa odświeżania listy
+  // Handle refreshing notifications list
   const handleRefresh = async () => {
     if (refreshing) return;
     
@@ -68,14 +68,14 @@ const NotificationDropdown = ({
       await onRefresh();
       toast.success('Powiadomienia odświeżone');
     } catch (error) {
-      console.error('Błąd podczas odświeżania powiadomień:', error);
+      console.error('Error refreshing notifications:', error);
       toast.error('Nie udało się odświeżyć powiadomień');
     } finally {
       setRefreshing(false);
     }
   };
 
-  // Obsługa oznaczania wszystkich jako przeczytane
+  // Handle marking all as read
   const handleMarkAllAsRead = async () => {
     if (markingRead) return;
     
@@ -84,16 +84,31 @@ const NotificationDropdown = ({
       await onMarkAllAsRead();
       toast.success('Wszystkie powiadomienia oznaczone jako przeczytane');
     } catch (error) {
-      console.error('Błąd podczas oznaczania wszystkich powiadomień jako przeczytane:', error);
+      console.error('Error marking all notifications as read:', error);
       toast.error('Nie udało się oznaczyć wszystkich powiadomień jako przeczytane');
     } finally {
       setMarkingRead(false);
     }
   };
 
+  // Display loading message when necessary
+  if (isLoading) {
+    return (
+      <div className="absolute right-0 mt-2 w-80 bg-white rounded-md shadow-lg z-10 overflow-hidden border border-gray-200">
+        <div className="border-b border-gray-200 px-4 py-3">
+          <h3 className="text-sm font-semibold text-gray-700">Powiadomienia</h3>
+        </div>
+        <div className="flex justify-center items-center py-8">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500"></div>
+          <span className="ml-2 text-sm text-gray-500">Ładowanie powiadomień...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="absolute right-0 mt-2 w-80 bg-white rounded-md shadow-lg z-10 overflow-hidden border border-gray-200">
-      {/* Nagłówek */}
+      {/* Header */}
       <div className="border-b border-gray-200 px-4 py-3 flex justify-between items-center">
         <h3 className="text-sm font-semibold text-gray-700">Powiadomienia</h3>
         <div className="flex space-x-2">
@@ -103,7 +118,7 @@ const NotificationDropdown = ({
             disabled={refreshing}
             aria-label="Odśwież powiadomienia"
           >
-            <RefreshIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <ArrowPathIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
           <button
             className={`text-xs text-gray-500 hover:text-gray-700 ${markingRead ? 'opacity-50 cursor-wait' : ''}`}
@@ -115,13 +130,9 @@ const NotificationDropdown = ({
         </div>
       </div>
 
-      {/* Lista powiadomień */}
+      {/* Notifications list */}
       <div className="max-h-96 overflow-y-auto">
-        {isLoading ? (
-          <div className="flex justify-center items-center py-6">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500"></div>
-          </div>
-        ) : notifications.length === 0 ? (
+        {notifications.length === 0 ? (
           <div className="py-6 px-4 text-center text-sm text-gray-500">
             Brak powiadomień
           </div>
@@ -132,20 +143,20 @@ const NotificationDropdown = ({
                 key={notification.id}
                 notification={notification}
                 onMarkAsRead={handleMarkAsRead}
-                closeDropdown={closeDropdown} // Przekazujemy funkcję zamykającą
+                closeDropdown={closeDropdown}
               />
             ))}
           </ul>
         )}
       </div>
 
-      {/* Stopka */}
+      {/* Footer */}
       <div className="border-t border-gray-200 p-2">
         <button
           className="w-full text-center text-xs text-indigo-600 hover:text-indigo-800 py-2 flex items-center justify-center"
           onClick={() => {
             if (typeof closeDropdown === 'function') {
-              closeDropdown(); // Zamykamy dropdown przed przekierowaniem
+              closeDropdown(); // Close dropdown before redirecting
             }
             onViewAllClick();
           }}

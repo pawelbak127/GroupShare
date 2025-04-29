@@ -3,7 +3,7 @@ import supabaseAdmin from '@/lib/database/supabase-admin-client';
 
 class NotificationService {
   /**
-   * Creates a new notification
+   * Creates a new notification with duplication check
    * @param {string} userId - ID of the user to notify
    * @param {string} type - Type of notification (invite, message, purchase, dispute)
    * @param {string} title - Title of the notification
@@ -12,6 +12,7 @@ class NotificationService {
    * @param {string} relatedEntityId - ID of related entity (optional)
    * @param {string} priority - Priority (high, normal, low) (optional)
    * @param {number} ttl - Time to live in days (0 = no expiration) (optional)
+   * @param {boolean} skipDuplicateCheck - Whether to skip duplicate check (optional)
    * @returns {Promise<Object>} Created notification
    */
   async createNotification(
@@ -22,9 +23,34 @@ class NotificationService {
     relatedEntityType = null,
     relatedEntityId = null,
     priority = 'normal',
-    ttl = 0
+    ttl = 0,
+    skipDuplicateCheck = false
   ) {
     try {
+      // Verify entity exists if entityId and entityType are provided
+      if (relatedEntityId && relatedEntityType && !skipDuplicateCheck) {
+        const entityExists = await this.verifyEntityExists(relatedEntityType, relatedEntityId);
+        if (!entityExists) {
+          console.warn(`Entity ${relatedEntityType}:${relatedEntityId} does not exist. Skipping notification.`);
+          return null;
+        }
+      }
+
+      // Check for similar recent notifications to avoid duplication
+      if (!skipDuplicateCheck && relatedEntityType && relatedEntityId) {
+        const hasDuplicate = await this.checkForDuplicateNotification(
+          userId, 
+          type, 
+          relatedEntityType, 
+          relatedEntityId
+        );
+        
+        if (hasDuplicate) {
+          console.log(`Skipping duplicate notification: ${type} for ${relatedEntityType}:${relatedEntityId}`);
+          return null;
+        }
+      }
+
       const notification = {
         user_id: userId,
         type,
@@ -48,7 +74,220 @@ class NotificationService {
       return data;
     } catch (error) {
       console.error('Error creating notification:', error);
-      throw new Error(`Failed to create notification: ${error.message}`);
+      // Don't throw - fail silently for notifications
+      return null;
+    }
+  }
+
+  /**
+   * Check if a similar notification already exists for this entity and user
+   * to prevent duplicate notifications
+   * @param {string} userId - User ID
+   * @param {string} type - Notification type
+   * @param {string} entityType - Entity type
+   * @param {string} entityId - Entity ID
+   * @returns {Promise<boolean>} Whether a duplicate exists
+   */
+  async checkForDuplicateNotification(userId, type, entityType, entityId) {
+    try {
+      // Check for similar notifications in the last hour
+      const oneHourAgo = new Date();
+      oneHourAgo.setHours(oneHourAgo.getHours() - 1);
+      
+      const { count, error } = await supabaseAdmin
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('type', type)
+        .eq('related_entity_type', entityType)
+        .eq('related_entity_id', entityId)
+        .gte('created_at', oneHourAgo.toISOString());
+      
+      if (error) throw error;
+      
+      return count > 0;
+    } catch (error) {
+      console.error('Error checking for duplicate notifications:', error);
+      // If check fails, assume no duplicate to ensure notification is sent
+      return false;
+    }
+  }
+
+  /**
+   * Verify that an entity exists before sending a notification about it
+   * @param {string} entityType - Type of entity
+   * @param {string} entityId - ID of entity
+   * @returns {Promise<boolean>} Whether the entity exists
+   */
+  async verifyEntityExists(entityType, entityId) {
+    try {
+      let table;
+      switch (entityType) {
+        case 'group':
+          table = 'groups';
+          break;
+        case 'purchase':
+        case 'purchase_record':
+          table = 'purchase_records';
+          break;
+        case 'dispute':
+          table = 'disputes';
+          break;
+        case 'transaction':
+          table = 'transactions';
+          break;
+        case 'group_invitation':
+          table = 'group_invitations';
+          break;
+        case 'group_sub':
+          table = 'group_subs';
+          break;
+        case 'conversation':
+          table = 'conversations';
+          break;
+        default:
+          console.warn(`Unknown entity type: ${entityType}`);
+          return false;
+      }
+      
+      const { count, error } = await supabaseAdmin
+        .from(table)
+        .select('id', { count: 'exact', head: true })
+        .eq('id', entityId);
+      
+      if (error) throw error;
+      
+      return count > 0;
+    } catch (error) {
+      console.error(`Error verifying entity ${entityType}:${entityId}:`, error);
+      // If verification fails, assume entity exists to ensure notification is sent
+      return true;
+    }
+  }
+
+  /**
+   * Create system notification for multiple recipients
+   * @param {string[]} userIds - Array of user IDs to notify
+   * @param {string} type - Notification type
+   * @param {string} title - Notification title
+   * @param {string} content - Notification content
+   * @param {string} relatedEntityType - Entity type
+   * @param {string} relatedEntityId - Entity ID
+   * @returns {Promise<Object[]>} Created notifications
+   */
+  async createBulkNotifications(userIds, type, title, content, relatedEntityType = null, relatedEntityId = null) {
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+      return [];
+    }
+    
+    try {
+      // Verify entity exists
+      if (relatedEntityType && relatedEntityId) {
+        const entityExists = await this.verifyEntityExists(relatedEntityType, relatedEntityId);
+        if (!entityExists) {
+          console.warn(`Entity ${relatedEntityType}:${relatedEntityId} does not exist. Skipping bulk notifications.`);
+          return [];
+        }
+      }
+      
+      // Create notification objects for each user
+      const notifications = userIds.map(userId => ({
+        user_id: userId,
+        type,
+        title,
+        content,
+        related_entity_type: relatedEntityType,
+        related_entity_id: relatedEntityId,
+        is_read: false,
+        created_at: new Date().toISOString()
+      }));
+      
+      const { data, error } = await supabaseAdmin
+        .from('notifications')
+        .insert(notifications)
+        .select();
+      
+      if (error) throw error;
+      
+      return data || [];
+    } catch (error) {
+      console.error('Error creating bulk notifications:', error);
+      // Don't throw - fail silently for notifications
+      return [];
+    }
+  }
+
+  /**
+   * Create a transaction notification that consolidates payment/purchase info
+   * @param {string} userId - User ID
+   * @param {string} transactionId - Transaction ID
+   * @param {string} purchaseId - Purchase ID
+   * @param {string} status - Transaction status
+   * @returns {Promise<Object>} Created notification
+   */
+  async createTransactionNotification(userId, transactionId, purchaseId, status = 'completed') {
+    try {
+      // Get transaction details
+      const { data: transaction, error: transactionError } = await supabaseAdmin
+        .from('transactions')
+        .select(`
+          *,
+          purchase:purchase_records!purchase_record_id(
+            group_sub_id,
+            group_sub:group_subs(
+              subscription_platforms(name)
+            )
+          )
+        `)
+        .eq('id', transactionId)
+        .single();
+      
+      if (transactionError || !transaction) {
+        console.error('Error fetching transaction for notification:', transactionError);
+        return null;
+      }
+      
+      // Determine notification content based on status
+      let title, content, type;
+      const platformName = transaction.purchase?.group_sub?.subscription_platforms?.name || 'subskrypcji';
+      
+      if (status === 'completed') {
+        type = 'purchase_completed';
+        title = `Zakup ${platformName} zakończony pomyślnie`;
+        content = `Twój zakup subskrypcji ${platformName} został pomyślnie zrealizowany. Możesz teraz uzyskać dostęp do instrukcji.`;
+      } else if (status === 'failed') {
+        type = 'purchase_failed';
+        title = `Problem z zakupem ${platformName}`;
+        content = `Wystąpił problem z Twoim zakupem subskrypcji ${platformName}. Sprawdź szczegóły płatności.`;
+      } else {
+        type = 'purchase_update';
+        title = `Aktualizacja zakupu ${platformName}`;
+        content = `Status Twojego zakupu subskrypcji ${platformName} został zaktualizowany.`;
+      }
+      
+      // Create notification with transaction as the related entity
+      return this.createNotification(
+        userId,
+        type,
+        title,
+        content,
+        'transaction',
+        transactionId,
+        status === 'failed' ? 'high' : 'normal',
+        0,
+        true // Skip duplicate check since we've already customized this
+      );
+    } catch (error) {
+      console.error('Error creating transaction notification:', error);
+      // Fall back to basic notification
+      return this.createNotification(
+        userId,
+        'purchase',
+        'Aktualizacja zakupu',
+        'Twój zakup został zaktualizowany.',
+        'purchase_record',
+        purchaseId
+      );
     }
   }
 
@@ -89,7 +328,6 @@ class NotificationService {
         .from('notifications')
         .update({
           is_read: true
-          // Removed read_at as it doesn't exist in the schema
         })
         .in('id', ids)
         .eq('user_id', userId);
@@ -114,7 +352,6 @@ class NotificationService {
         .from('notifications')
         .update({
           is_read: true
-          // Removed read_at as it doesn't exist in the schema
         })
         .eq('user_id', userId)
         .eq('is_read', false);

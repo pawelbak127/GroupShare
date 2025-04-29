@@ -5,61 +5,79 @@ import { useSearchParams } from 'next/navigation';
 import { toast } from '@/lib/utils/notification';
 
 /**
- * Komponent automatycznie oznaczający powiadomienia jako przeczytane po przejściu do strony.
- * Należy go używać na stronach, które są celem powiadomień.
+ * Component that automatically marks notifications as read when navigating to a page
+ * Use on pages that are notification targets
  * 
- * @param {Object} props - Właściwości komponentu
- * @param {string} props.entityType - Typ encji powiązanej z powiadomieniem (np. 'purchase', 'group_invitation')
- * @param {string} props.entityId - ID encji powiązanej z powiadomieniem
- * @param {React.ReactNode} props.children - Dzieci komponentu
+ * @param {Object} props - Component props
+ * @param {string} props.entityType - Type of entity related to notification (e.g., 'purchase', 'group_invitation')
+ * @param {string} props.entityId - ID of entity related to notification
+ * @param {React.ReactNode} props.children - Child components
+ * @param {boolean} props.showToast - Whether to show a toast notification when marking as read
+ * @param {boolean} props.trackView - Whether to track view in analytics
  */
-const NotificationAutoMark = ({ entityType, entityId, children }) => {
+const NotificationAutoMark = ({ 
+  entityType, 
+  entityId, 
+  children, 
+  showToast = true,
+  trackView = true
+}) => {
   const searchParams = useSearchParams();
   const fromNotification = searchParams.get('from_notification') === 'true';
   
   useEffect(() => {
-    // Oznacz powiadomienia jako przeczytane tylko jeśli użytkownik przyszedł z powiadomienia
-    // lub jeśli dostarczono jawnie typ i ID encji
+    // Only mark as read if:
+    // 1. User came from a notification, or
+    // 2. Entity type and ID are explicitly provided
     if ((fromNotification || (entityType && entityId)) && entityType && entityId) {
       const markNotificationsAsRead = async () => {
         try {
-          // Pobierz wszystkie powiadomienia związane z tą encją
-          const response = await fetch(
-            `/api/notifications?relatedEntityType=${encodeURIComponent(entityType)}&relatedEntityId=${encodeURIComponent(entityId)}`
-          );
-          
-          if (!response.ok) return;
-          
-          const data = await response.json();
-          
-          if (!data.notifications || data.notifications.length === 0) return;
-          
-          // Filtruj tylko nieprzeczytane powiadomienia
-          const unreadNotifications = data.notifications
-            .filter(notification => !notification.is_read)
-            .map(notification => notification.id);
-          
-          if (unreadNotifications.length === 0) return;
-          
-          // Oznacz wszystkie znalezione powiadomienia jako przeczytane
-          const updateResponse = await fetch('/api/notifications', {
+          // Use the new PATCH endpoint for marking entity-related notifications as read
+          const response = await fetch('/api/notifications', {
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ ids: unreadNotifications }),
+            body: JSON.stringify({ 
+              entityType, 
+              entityId 
+            }),
           });
           
-          if (updateResponse.ok) {
-            console.log(`Marked ${unreadNotifications.length} notifications as read for ${entityType}:${entityId}`);
-            // Informacja dla użytkownika, że przyszedł z powiadomienia
-            if (fromNotification) {
-              toast.info('Oznaczono powiadomienia jako przeczytane', { 
-                duration: 3000,
-                position: 'bottom-right'
+          if (!response.ok) {
+            console.warn(`Failed to mark notifications as read for ${entityType}:${entityId}`);
+            return;
+          }
+          
+          const data = await response.json();
+          
+          if (data.success && showToast && fromNotification) {
+            // Show user feedback
+            toast.info('Oznaczono powiadomienia jako przeczytane', { 
+              duration: 3000,
+              position: 'bottom-right'
+            });
+          }
+          
+          // Track view if needed
+          if (trackView) {
+            try {
+              await fetch('/api/notifications/track', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  entityType,
+                  entityId,
+                  markAsRead: false // Already marked as read above
+                }),
               });
+            } catch (trackError) {
+              console.warn('Failed to track notification view:', trackError);
             }
           }
+          
         } catch (error) {
           console.error('Error marking notifications as read:', error);
         }
@@ -67,9 +85,9 @@ const NotificationAutoMark = ({ entityType, entityId, children }) => {
       
       markNotificationsAsRead();
     }
-  }, [entityType, entityId, fromNotification]);
+  }, [entityType, entityId, fromNotification, showToast, trackView]);
   
-  // Ten komponent nie renderuje żadnego elementu, tylko przepuszcza dzieci
+  // This component doesn't render anything, just passes through children
   return children;
 };
 
