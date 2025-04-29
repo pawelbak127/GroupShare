@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser } from '@clerk/nextjs';
@@ -44,33 +44,54 @@ export default function PurchaseDetailsPage() {
     }
   };
 
+  // Pobieranie danych zakupu z obsługą nieistniejących rekordów
+  const fetchPurchaseDetails = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      console.log(`Pobieranie szczegółów zakupu ${id}`);
+      const response = await fetch(`/api/purchases/${id}`);
+      
+      if (response.status === 404) {
+        setError('Nie znaleziono szczegółów zakupu. Zakup mógł zostać usunięty lub ID jest nieprawidłowe.');
+        console.error(`Zakup o ID ${id} nie został znaleziony`);
+        
+        // Sprawdź czy przyszliśmy z powiadomienia o płatności (transaction)
+        const url = new URL(window.location.href);
+        const fromNotification = url.searchParams.get('from_notification') === 'true';
+        
+        if (fromNotification) {
+          // Zaczekaj 3 sekundy i przekieruj na stronę zakupów
+          toast.warning('Przekierowuję do listy zakupów...');
+          setTimeout(() => {
+            router.push('/purchases');
+          }, 3000);
+        }
+        
+        return;
+      }
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch purchase details');
+      }
+      
+      const data = await response.json();
+      setPurchase(data);
+    } catch (err) {
+      console.error('Error fetching purchase details:', err);
+      setError('Nie udało się pobrać szczegółów zakupu. Spróbuj ponownie później.');
+      toast.error('Problem z pobraniem szczegółów zakupu');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [id, router]);
+
   // Pobieranie danych zakupu
   useEffect(() => {
     if (!isLoaded || !user) return;
-
-    const fetchPurchaseDetails = async () => {
-      try {
-        setIsLoading(true);
-        
-        const response = await fetch(`/api/purchases/${id}`);
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch purchase details');
-        }
-        
-        const data = await response.json();
-        setPurchase(data);
-      } catch (err) {
-        console.error('Error fetching purchase details:', err);
-        setError('Nie udało się pobrać szczegółów zakupu');
-        toast.error('Problem z pobraniem szczegółów zakupu');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
     fetchPurchaseDetails();
-  }, [id, user, isLoaded]);
+  }, [id, user, isLoaded, fetchPurchaseDetails]);
 
   // Generowanie tokenu dostępu
   const generateAccessToken = async () => {
@@ -130,7 +151,7 @@ export default function PurchaseDetailsPage() {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 text-yellow-700">
-          Nie znaleziono szczegółów zakupu
+          Nie znaleziono szczegółów zakupu. Zakup mógł zostać usunięty lub ID jest nieprawidłowe.
         </div>
         <Link href="/purchases" className="mt-4 inline-block text-indigo-600 hover:text-indigo-800">
           &larr; Wróć do listy zakupów

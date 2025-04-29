@@ -95,6 +95,11 @@ const NotificationBell = () => {
     router.push('/notifications');
   };
 
+  // Funkcja do zamykania dropdownu - eksponowana dla komponentów potomnych
+  const closeDropdown = () => {
+    setIsOpen(false);
+  };
+
   // Oznaczenie wszystkich jako przeczytane
   const handleMarkAllAsRead = async () => {
     try {
@@ -155,6 +160,7 @@ const NotificationBell = () => {
           onMarkAllAsRead={handleMarkAllAsRead}
           onRefresh={fetchRecentNotifications}
           setUnreadCount={setUnreadCount}
+          closeDropdown={closeDropdown} // Przekazujemy funkcję zamykającą dropdown
         />
       )}
     </div>

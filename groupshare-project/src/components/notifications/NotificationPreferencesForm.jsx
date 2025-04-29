@@ -9,10 +9,10 @@ import LoadingSpinner from '../common/LoadingSpinner';
  */
 const NotificationPreferencesForm = () => {
   const [preferences, setPreferences] = useState({
-    email_notifications: true,
-    push_notifications: false,
-    notify_on_invite: true,
-    notify_on_message: true,
+    email_enabled: true,
+    push_enabled: false,
+    type_preferences: true,
+    type_preferences: true,
     notify_on_purchase: true,
     notify_on_dispute: true,
     email_digest: 'daily'
@@ -129,7 +129,7 @@ const NotificationPreferencesForm = () => {
             
             <div className="flex items-center justify-between border-t border-gray-200 pt-4">
               <div>
-                <label htmlFor="push_notifications" className="font-medium text-gray-700">
+                <label htmlFor="push_enabled" className="font-medium text-gray-700">
                   Powiadomienia push
                 </label>
                 <p className="text-sm text-gray-500">
@@ -139,16 +139,16 @@ const NotificationPreferencesForm = () => {
               <div className="flex items-center">
                 <input
                   type="checkbox"
-                  id="push_notifications"
-                  name="push_notifications"
-                  checked={preferences.push_notifications}
+                  id="push_enabled"
+                  name="push_enabled"
+                  checked={preferences.push_enabled}
                   onChange={handleChange}
                   className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                 />
               </div>
             </div>
             
-            {/* Zestawienie e-mail - tylko jeśli email_notifications jest zaznaczone */}
+            {/* Zestawienie e-mail - tylko jeśli email_enabled jest zaznaczone */}
             {preferences.email_enabled && (
               <div className="border-t border-gray-200 pt-4">
                 <label htmlFor="email_digest" className="block font-medium text-gray-700 mb-1">
@@ -177,7 +177,7 @@ const NotificationPreferencesForm = () => {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <label htmlFor="notify_on_invite" className="font-medium text-gray-700">
+                <label htmlFor="type_preferences" className="font-medium text-gray-700">
                   Zaproszenia
                 </label>
                 <p className="text-sm text-gray-500">
@@ -187,9 +187,9 @@ const NotificationPreferencesForm = () => {
               <div className="flex items-center">
                 <input
                   type="checkbox"
-                  id="notify_on_invite"
-                  name="notify_on_invite"
-                  checked={preferences.notify_on_invite}
+                  id="type_preferences"
+                  name="type_preferences"
+                  checked={preferences.type_preferences}
                   onChange={handleChange}
                   className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                 />
@@ -198,7 +198,7 @@ const NotificationPreferencesForm = () => {
             
             <div className="flex items-center justify-between border-t border-gray-200 pt-4">
               <div>
-                <label htmlFor="notify_on_message" className="font-medium text-gray-700">
+                <label htmlFor="type_preferences" className="font-medium text-gray-700">
                   Wiadomości
                 </label>
                 <p className="text-sm text-gray-500">
@@ -208,9 +208,9 @@ const NotificationPreferencesForm = () => {
               <div className="flex items-center">
                 <input
                   type="checkbox"
-                  id="notify_on_message"
-                  name="notify_on_message"
-                  checked={preferences.notify_on_message}
+                  id="type_preferences"
+                  name="type_preferences"
+                  checked={preferences.type_preferences}
                   onChange={handleChange}
                   className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                 />

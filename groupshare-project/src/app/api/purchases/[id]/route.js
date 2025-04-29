@@ -11,6 +11,11 @@ export async function GET(request, { params }) {
   try {
     const { id } = params;
     
+    // Sprawdź parametry URL
+    const { searchParams } = new URL(request.url);
+    const isTransactionId = searchParams.get('transactionId') === 'true';
+    console.log(`Pobieranie szczegółów ${isTransactionId ? 'transakcji' : 'zakupu'} ${id}`);
+    
     // Sprawdź autentykację
     const user = await currentUser();
     if (!user) {
@@ -20,7 +25,7 @@ export async function GET(request, { params }) {
       );
     }
     
-    console.log(`Pobieranie szczegółów zakupu ${id} dla użytkownika ${user.id}`);
+    console.log(`Pobieranie dla użytkownika ${user.id}`);
     
     // Pobierz profil użytkownika
     const { data: userProfile, error: profileError } = await supabaseAdmin
@@ -44,23 +49,77 @@ export async function GET(request, { params }) {
       );
     }
     
-    // Pobierz dane zakupu wraz z powiązanymi informacjami
-    // Zmiana: Użyj supabaseAdmin zamiast supabase, aby ominąć RLS
-    const { data: purchase, error: purchaseError } = await supabaseAdmin
-      .from('purchase_records')
-      .select(`
-        *,
-        group_sub:group_subs(
+    let purchase;
+    let purchaseError;
+    
+    if (isTransactionId) {
+      // Pobierz zakup na podstawie ID transakcji
+      console.log(`Szukam zakupu po ID transakcji: ${id}`);
+      
+      const { data, error } = await supabaseAdmin
+        .from('transactions')
+        .select('purchase_record_id')
+        .eq('id', id)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching transaction:', error);
+        return NextResponse.json(
+          { error: 'Transaction not found', details: error },
+          { status: 404 }
+        );
+      }
+      
+      if (!data || !data.purchase_record_id) {
+        return NextResponse.json(
+          { error: 'Transaction does not have an associated purchase record' },
+          { status: 404 }
+        );
+      }
+      
+      // Pobierz dane zakupu za pomocą ID purchase_record
+      const purchaseId = data.purchase_record_id;
+      console.log(`Znaleziono powiązany purchase_record_id: ${purchaseId}`);
+      
+      const purchaseResult = await supabaseAdmin
+        .from('purchase_records')
+        .select(`
           *,
-          subscription_platforms(
-            id,
-            name,
-            icon
+          group_sub:group_subs(
+            *,
+            subscription_platforms(
+              id,
+              name,
+              icon
+            )
           )
-        )
-      `)
-      .eq('id', id)
-      .single();
+        `)
+        .eq('id', purchaseId)
+        .single();
+      
+      purchase = purchaseResult.data;
+      purchaseError = purchaseResult.error;
+    } else {
+      // Standardowe pobieranie zakupu po ID
+      const result = await supabaseAdmin
+        .from('purchase_records')
+        .select(`
+          *,
+          group_sub:group_subs(
+            *,
+            subscription_platforms(
+              id,
+              name,
+              icon
+            )
+          )
+        `)
+        .eq('id', id)
+        .single();
+      
+      purchase = result.data;
+      purchaseError = result.error;
+    }
     
     if (purchaseError) {
       console.error('Error fetching purchase details:', purchaseError);

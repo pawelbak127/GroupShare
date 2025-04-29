@@ -17,7 +17,7 @@ import { toast } from '@/lib/utils/notification';
 /**
  * Komponent pojedynczego powiadomienia w rozwijanym menu
  */
-const NotificationItem = ({ notification, onMarkAsRead }) => {
+const NotificationItem = ({ notification, onMarkAsRead, closeDropdown }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isMarkingRead, setIsMarkingRead] = useState(false);
   const router = useRouter();
@@ -30,22 +30,29 @@ const NotificationItem = ({ notification, onMarkAsRead }) => {
   // Generowanie linku w zależności od typu powiadomienia
   const getNotificationLink = () => {
     if (!notification.related_entity_type || !notification.related_entity_id) {
+      console.warn("Brak related_entity_type lub related_entity_id w powiadomieniu:", notification);
       return '/notifications';
     }
 
-    // Dodajemy parametr from_notification=true do URL
+    // Dodaj parametr from_notification=true do URL
     switch (notification.related_entity_type) {
       case 'group':
         return `/groups/${notification.related_entity_id}?from_notification=true`;
       case 'group_invitation':
-        return `/groups/${notification.related_entity_id}?from_notification=true`;
+        // W przypadku zaproszenia, używamy kodu zaproszenia w URL
+        return `/groups/join?code=${notification.related_entity_id}&from_notification=true`;
       case 'purchase':
+      case 'purchase_record': // Obsługa purchase_record z bazy danych
         return `/purchases/${notification.related_entity_id}/details?from_notification=true`;
       case 'dispute':
         return `/disputes/${notification.related_entity_id}?from_notification=true`;
+      case 'transaction':
+        // Dla transakcji, przekierowujemy do szczegółów zakupu, ale z parametrem transactionId=true
+        return `/purchases/${notification.related_entity_id}/details?transactionId=true&from_notification=true`;
       case 'conversation':
         return `/messages/${notification.related_entity_id}?from_notification=true`;
       default:
+        console.warn(`Nieobsługiwany typ encji w powiadomieniu: ${notification.related_entity_type}`, notification);
         return '/notifications';
     }
   };
@@ -60,7 +67,13 @@ const NotificationItem = ({ notification, onMarkAsRead }) => {
       case 'purchase':
         return <TicketIcon className="h-5 w-5 text-green-500" />;
       case 'dispute':
+      case 'dispute_filed':
+      case 'dispute_created':
         return <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />;
+      case 'payment':
+        return <TicketIcon className="h-5 w-5 text-green-500" />;
+      case 'access':
+        return <EnvelopeIcon className="h-5 w-5 text-blue-500" />;
       default:
         return <EnvelopeIcon className="h-5 w-5 text-gray-400" />;
     }
@@ -84,8 +97,10 @@ const NotificationItem = ({ notification, onMarkAsRead }) => {
 
   // Obsługa oznaczania jako przeczytane
   const handleMarkAsRead = async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     
     if (notification.is_read || isMarkingRead) {
       return;
@@ -104,11 +119,11 @@ const NotificationItem = ({ notification, onMarkAsRead }) => {
   // Obsługa kliknięcia na powiadomienie
   const handleNotificationClick = async (e) => {
     e.preventDefault();
-    console.log("Notification item clicked");
+    console.log("Kliknięcie w powiadomienie z dropdown:", notification);
     
     // Pobierz link docelowy
     const link = getNotificationLink();
-    console.log("Target link:", link);
+    console.log("Link docelowy:", link);
     
     try {
       // Najpierw oznaczamy jako przeczytane jeśli trzeba
@@ -116,11 +131,21 @@ const NotificationItem = ({ notification, onMarkAsRead }) => {
         await handleMarkAsRead(e);
       }
       
+      // Zamknij dropdown
+      if (typeof closeDropdown === 'function') {
+        closeDropdown();
+      }
+      
       // Przekieruj na odpowiednią stronę
-      console.log("Redirecting to:", link);
+      console.log("Przekierowuję do:", link);
       router.push(link);
     } catch (error) {
-      console.error('Error handling notification click:', error);
+      console.error('Błąd podczas obsługi kliknięcia w powiadomienie:', error);
+      
+      // Zamknij dropdown nawet w przypadku błędu
+      if (typeof closeDropdown === 'function') {
+        closeDropdown();
+      }
       
       // Przekieruj mimo błędu
       router.push(link);

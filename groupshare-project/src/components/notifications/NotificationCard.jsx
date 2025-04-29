@@ -31,26 +31,32 @@ const NotificationCard = ({ notification, onMarkAsRead, onDelete }) => {
 
 // Generowanie linku do odpowiedniego zasobu
 const getNotificationLink = () => {
-    if (!notification.related_entity_type || !notification.related_entity_id) {
+  if (!notification.related_entity_type || !notification.related_entity_id) {
+    console.warn("Brak related_entity_type lub related_entity_id w powiadomieniu:", notification);
+    return null;
+  }
+
+  // Generowanie odpowiedniego URL na podstawie typu powiązanego zasobu
+  switch (notification.related_entity_type) {
+    case 'group':
+      return `/groups/${notification.related_entity_id}?from_notification=true`;
+    case 'group_invitation':
+      return `/groups/join?code=${notification.related_entity_id}&from_notification=true`;
+    case 'purchase':
+    case 'purchase_record': // Obsługa purchase_record z bazy danych
+      return `/purchases/${notification.related_entity_id}/details?from_notification=true`;
+    case 'dispute':
+      return `/disputes/${notification.related_entity_id}?from_notification=true`;
+    case 'transaction':
+      // Dla transakcji, przekierowujemy do szczegółów zakupu, ale z parametrem transactionId=true
+      return `/purchases/${notification.related_entity_id}/details?transactionId=true&from_notification=true`;
+    case 'conversation':
+      return `/messages/${notification.related_entity_id}?from_notification=true`;
+    default:
+      console.warn(`Nieobsługiwany typ encji w powiadomieniu: ${notification.related_entity_type}`, notification);
       return null;
-    }
-  
-    // Generowanie odpowiedniego URL na podstawie typu powiązanego zasobu
-    switch (notification.related_entity_type) {
-      case 'group':
-        return `/groups/${notification.related_entity_id}?from_notification=true`;
-      case 'group_invitation':
-        return `/groups/${notification.related_entity_id}?from_notification=true`;
-      case 'purchase':
-        return `/purchases/${notification.related_entity_id}/details?from_notification=true`;
-      case 'dispute':
-        return `/disputes/${notification.related_entity_id}?from_notification=true`;
-      case 'conversation':
-        return `/messages/${notification.related_entity_id}?from_notification=true`;
-      default:
-        return null;
-    }
-  };
+  }
+};
 
   // Pobieranie podstawowego URL na podstawie typu powiązanego zasobu
   const getBaseUrl = () => {
@@ -58,11 +64,14 @@ const getNotificationLink = () => {
       case 'group':
         return `/groups/${notification.related_entity_id}`;
       case 'group_invitation':
-        return `/groups/${notification.related_entity_id}`;
+        return `/groups/join?code=${notification.related_entity_id}`;
       case 'purchase':
+      case 'purchase_record': // Dodano obsługę purchase_record z bazy danych
         return `/purchases/${notification.related_entity_id}/details`;
       case 'dispute':
         return `/disputes/${notification.related_entity_id}`;
+      case 'transaction':
+        return `/purchases/${notification.related_entity_id}/details?transactionId=true`;
       case 'conversation':
         return `/messages/${notification.related_entity_id}`;
       default:
@@ -80,7 +89,13 @@ const getNotificationLink = () => {
       case 'purchase':
         return <TicketIcon className="h-6 w-6 text-green-500" />;
       case 'dispute':
+      case 'dispute_filed':
+      case 'dispute_created':
         return <ExclamationIcon className="h-6 w-6 text-red-500" />;
+      case 'payment':
+        return <TicketIcon className="h-6 w-6 text-green-500" />;
+      case 'access':
+        return <TicketIcon className="h-6 w-6 text-blue-500" />;
       default:
         return <MailIcon className="h-6 w-6 text-gray-400" />;
     }
@@ -104,35 +119,35 @@ const getNotificationLink = () => {
 
   // Obsługa kliknięcia w powiadomienie
 const handleClick = async () => {
-    // Pobierz link docelowy
-    const link = getNotificationLink();
-    console.log("Notification clicked, link:", link);
-    
-    try {
-      // Najpierw oznaczamy jako przeczytane
-      if (!notification.is_read) {
-        await handleMarkAsRead();
-      }
-      
-      // Przekierowanie, jeśli jest dokąd
-      if (link) {
-        console.log("Redirecting to:", link);
-        router.push(link);
-      } else {
-        // Jeśli nie ma linku, pokażmy informację
-        console.log("No link available for notification");
-        toast.info('Nie można otworzyć szczegółów tego powiadomienia');
-      }
-    } catch (error) {
-      console.error('Error handling notification click:', error);
-      
-      // Przekieruj nawet jeśli wystąpił błąd z oznaczaniem jako przeczytane
-      if (link) {
-        console.log("Redirecting despite error:", link);
-        router.push(link);
-      }
+  // Pobierz link docelowy
+  const link = getNotificationLink();
+  console.log("Kliknięcie w powiadomienie z listy powiadomień, link:", link, "powiadomienie:", notification);
+  
+  try {
+    // Najpierw oznaczamy jako przeczytane
+    if (!notification.is_read) {
+      await handleMarkAsRead();
     }
-  };
+    
+    // Przekierowanie, jeśli jest dokąd
+    if (link) {
+      console.log("Przekierowuję do:", link);
+      router.push(link);
+    } else {
+      // Jeśli nie ma linku, pokażmy informację
+      console.log("Brak dostępnego linku dla powiadomienia");
+      toast.info('Nie można otworzyć szczegółów tego powiadomienia');
+    }
+  } catch (error) {
+    console.error('Błąd podczas obsługi kliknięcia w powiadomienie:', error);
+    
+    // Przekieruj nawet jeśli wystąpił błąd z oznaczaniem jako przeczytane
+    if (link) {
+      console.log("Przekierowuję mimo błędu:", link);
+      router.push(link);
+    }
+  }
+};
 
   // Obsługa oznaczania jako przeczytane
   const handleMarkAsRead = async (e) => {
@@ -212,9 +227,10 @@ const handleClick = async () => {
                 'bg-blue-100 text-blue-800'
               }`}>
                 {notification.related_entity_type === 'group_invitation' ? 'Zaproszenie' :
-                 notification.related_entity_type === 'purchase' ? 'Zakup' :
+                 notification.related_entity_type === 'purchase' || notification.related_entity_type === 'purchase_record' ? 'Zakup' :
                  notification.related_entity_type === 'dispute' ? 'Spór' :
                  notification.related_entity_type === 'conversation' ? 'Wiadomość' :
+                 notification.related_entity_type === 'transaction' ? 'Transakcja' :
                  notification.related_entity_type}
               </span>
               

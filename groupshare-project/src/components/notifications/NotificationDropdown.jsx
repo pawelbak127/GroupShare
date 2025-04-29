@@ -20,7 +20,8 @@ const NotificationDropdown = ({
   onViewAllClick,
   onMarkAllAsRead,
   onRefresh,
-  setUnreadCount
+  setUnreadCount,
+  closeDropdown // Nowa funkcja do zamykania dropdownu
 }) => {
   const [markingRead, setMarkingRead] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -43,10 +44,12 @@ const NotificationDropdown = ({
       // Aktualizuj stan 
       setUnreadCount(prev => Math.max(0, prev - 1));
       
-      // Zaktualizuj listę powiadomień
+      // Zaktualizuj listę powiadomień lokalnie
       const updatedNotifications = notifications.map(notif => 
         notif.id === notificationId ? { ...notif, is_read: true } : notif
       );
+      
+      console.log(`Powiadomienie ${notificationId} oznaczone jako przeczytane`);
       
       return updatedNotifications;
     } catch (err) {
@@ -58,16 +61,34 @@ const NotificationDropdown = ({
 
   // Obsługa odświeżania listy
   const handleRefresh = async () => {
+    if (refreshing) return;
+    
     setRefreshing(true);
-    await onRefresh();
-    setRefreshing(false);
+    try {
+      await onRefresh();
+      toast.success('Powiadomienia odświeżone');
+    } catch (error) {
+      console.error('Błąd podczas odświeżania powiadomień:', error);
+      toast.error('Nie udało się odświeżyć powiadomień');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   // Obsługa oznaczania wszystkich jako przeczytane
   const handleMarkAllAsRead = async () => {
+    if (markingRead) return;
+    
     setMarkingRead(true);
-    await onMarkAllAsRead();
-    setMarkingRead(false);
+    try {
+      await onMarkAllAsRead();
+      toast.success('Wszystkie powiadomienia oznaczone jako przeczytane');
+    } catch (error) {
+      console.error('Błąd podczas oznaczania wszystkich powiadomień jako przeczytane:', error);
+      toast.error('Nie udało się oznaczyć wszystkich powiadomień jako przeczytane');
+    } finally {
+      setMarkingRead(false);
+    }
   };
 
   return (
@@ -111,6 +132,7 @@ const NotificationDropdown = ({
                 key={notification.id}
                 notification={notification}
                 onMarkAsRead={handleMarkAsRead}
+                closeDropdown={closeDropdown} // Przekazujemy funkcję zamykającą
               />
             ))}
           </ul>
@@ -121,7 +143,12 @@ const NotificationDropdown = ({
       <div className="border-t border-gray-200 p-2">
         <button
           className="w-full text-center text-xs text-indigo-600 hover:text-indigo-800 py-2 flex items-center justify-center"
-          onClick={onViewAllClick}
+          onClick={() => {
+            if (typeof closeDropdown === 'function') {
+              closeDropdown(); // Zamykamy dropdown przed przekierowaniem
+            }
+            onViewAllClick();
+          }}
         >
           Zobacz wszystkie powiadomienia
           <ArrowRightIcon className="ml-1 h-3 w-3" />
