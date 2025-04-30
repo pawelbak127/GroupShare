@@ -6,7 +6,7 @@ import { notificationService } from '@/services/notification/notification-servic
 
 /**
  * POST /api/notifications/create
- * Creates a new notification with improved error handling
+ * Creates a new notification with improved error handling and deduplication
  */
 export async function POST(request) {
   try {
@@ -68,7 +68,14 @@ export async function POST(request) {
         .eq('external_auth_id', user.id)
         .single();
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        return NextResponse.json(
+          { error: 'Failed to fetch user profile', details: error.message },
+          { status: 500 }
+        );
+      }
+      
       if (!userProfile) {
         return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
       }
@@ -85,48 +92,47 @@ export async function POST(request) {
         }
       }
       
-      // Check if API is being used for consolidated notifications
-      if (notificationData.consolidatedType) {
-        let result;
-        
-        switch (notificationData.consolidatedType) {
-          case 'transaction':
-            // Handle transaction notifications (both buyer and seller)
-            result = await notificationService.createTransactionNotification({
-              transactionId: notificationData.relatedEntityId,
-              purchaseId: notificationData.purchaseId,
-              status: notificationData.status || 'completed',
-              sendToSeller: notificationData.sendToSeller !== false
-            });
-            break;
-            
-          case 'dispute':
-            // Handle dispute notifications (reporter and reported)
-            result = await notificationService.createDisputeNotifications({
-              disputeId: notificationData.relatedEntityId,
-              reporterId: notificationData.reporterId,
-              reportedId: notificationData.reportedId,
-              type: notificationData.disputeType || 'access'
-            });
-            break;
-            
-          default:
+      // Prevent creating too many notifications within short time period (rate limiting)
+      // Only if creating a notification for the same entity by the same user
+      if (notificationData.relatedEntityType && notificationData.relatedEntityId) {
+        try {
+          const rateLimited = await checkRateLimit(
+            userProfile.id, 
+            notificationData.relatedEntityType,
+            notificationData.relatedEntityId
+          );
+          
+          if (rateLimited && !notificationData.bypassRateLimit) {
             return NextResponse.json(
-              { error: `Unknown consolidated notification type: ${notificationData.consolidatedType}` },
-              { status: 400 }
+              { 
+                error: 'Rate limit reached for notifications', 
+                bypassRateLimit: true,
+                retryAfter: '60s'
+              },
+              { status: 429 }
             );
+          }
+        } catch (rateError) {
+          // Just log the error but don't prevent notification creation
+          console.warn('Rate limit check failed:', rateError);
         }
-        
-        return NextResponse.json(result || []);
       }
       
-      // Regular single notification creation
-      // Verify entity exists if entity is specified
+      // Verify entity exists if entity is specified (with fallback)
+      let entityExists = true;
+      
       if (notificationData.relatedEntityType && notificationData.relatedEntityId) {
-        const entityExists = await notificationService.verifyEntityExists(
-          notificationData.relatedEntityType,
-          notificationData.relatedEntityId
-        );
+        try {
+          entityExists = await notificationService.verifyEntityExists(
+            notificationData.relatedEntityType,
+            notificationData.relatedEntityId
+          );
+        } catch (verifyError) {
+          // Log error but continue with a warning
+          console.warn(`Entity verification failed: ${verifyError.message}`);
+          // Still set entityExists based on the error type
+          entityExists = !(verifyError.message && verifyError.message.includes('not found'));
+        }
         
         if (!entityExists) {
           return NextResponse.json(
@@ -136,43 +142,100 @@ export async function POST(request) {
         }
       }
       
-      // Check for duplicate notifications
-      if (notificationData.relatedEntityType && notificationData.relatedEntityId && !notificationData.skipDuplicateCheck) {
-        const hasDuplicate = await notificationService.checkForDuplicateNotification(
-          notificationData.userId,
-          notificationData.type,
-          notificationData.relatedEntityType,
-          notificationData.relatedEntityId
-        );
-        
-        if (hasDuplicate) {
-          return NextResponse.json(
-            { error: 'Similar notification already exists for this entity', skipDuplicateCheck: true },
-            { status: 409 }
+      // Check for duplicate notifications with improved algorithm
+      let duplicateExists = false;
+      
+      if (notificationData.relatedEntityType && notificationData.relatedEntityId) {
+        try {
+          // Use improved duplicate detection that considers time window
+          duplicateExists = await notificationService.checkForDuplicateNotificationAdvanced(
+            notificationData.userId,
+            notificationData.type,
+            notificationData.relatedEntityType,
+            notificationData.relatedEntityId,
+            notificationData.title,
+            30 // Time window in minutes
           );
+          
+          if (duplicateExists && !notificationData.skipDuplicateCheck) {
+            console.log(`Duplicate notification prevented for ${notificationData.type}:${notificationData.relatedEntityId}`);
+            
+            return NextResponse.json(
+              { 
+                warning: 'Similar notification already exists for this entity', 
+                skipDuplicateCheck: true,
+                status: 'skipped'
+              },
+              { status: 200 } // Return 200 instead of error to indicate it's handled normally
+            );
+          }
+        } catch (dupError) {
+          // Log the error but don't prevent notification creation
+          console.warn('Duplicate check failed:', dupError);
+          // This is non-critical, so we continue
         }
       }
       
       // Create notification using notification service
-      const notification = await notificationService.createNotification(
-        notificationData.userId,
-        notificationData.type,
-        notificationData.title,
-        notificationData.content,
-        notificationData.relatedEntityType || null,
-        notificationData.relatedEntityId || null,
-        notificationData.priority || 'normal',
-        notificationData.ttl || 0,
-        notificationData.skipDuplicateCheck || false
-      );
-      
-      // Return created notification or success message if creation failed silently
-      if (notification) {
-        return NextResponse.json(notification);
-      } else {
+      try {
+        const notification = await notificationService.createNotification(
+          notificationData.userId,
+          notificationData.type,
+          notificationData.title,
+          notificationData.content,
+          notificationData.relatedEntityType || null,
+          notificationData.relatedEntityId || null,
+          notificationData.priority || 'normal',
+          notificationData.ttl || 0,
+          notificationData.skipDuplicateCheck || false
+        );
+        
+        // Return created notification or success message
+        if (notification) {
+          return NextResponse.json(notification);
+        } else {
+          return NextResponse.json(
+            { message: 'Notification may have been created or skipped due to duplication check' },
+            { status: 202 }
+          );
+        }
+      } catch (creationError) {
+        console.error('Error creating notification:', creationError);
+        
+        // Attempt fallback insertion directly if service fails
+        if (notificationData.criticality === 'high') {
+          try {
+            const { data: fallbackResult } = await supabaseAdmin
+              .from('notifications')
+              .insert({
+                user_id: notificationData.userId,
+                type: notificationData.type,
+                title: notificationData.title,
+                content: notificationData.content, 
+                related_entity_type: notificationData.relatedEntityType,
+                related_entity_id: notificationData.relatedEntityId,
+                priority: notificationData.priority || 'normal',
+                is_read: false,
+                created_at: new Date().toISOString()
+              })
+              .select()
+              .single();
+              
+            if (fallbackResult) {
+              console.log('Fallback notification creation succeeded');
+              return NextResponse.json({
+                ...fallbackResult,
+                _note: 'Created via fallback mechanism'
+              });
+            }
+          } catch (fallbackError) {
+            console.error('Fallback notification creation also failed:', fallbackError);
+          }
+        }
+        
         return NextResponse.json(
-          { message: 'Notification may have been created or skipped due to duplication check' },
-          { status: 202 }
+          { error: 'Failed to create notification', details: creationError.message },
+          { status: 500 }
         );
       }
     } catch (dbError) {
@@ -290,6 +353,37 @@ async function checkPermissionToNotify(senderId, recipientId, notificationData) 
     return false;
   } catch (error) {
     console.error('Error checking notification permissions:', error);
+    return false;
+  }
+}
+
+/**
+ * Check if user is hitting rate limits for notification creation
+ * @param {string} userId 
+ * @param {string} entityType 
+ * @param {string} entityId 
+ * @returns {Promise<boolean>} true if rate limited
+ */
+async function checkRateLimit(userId, entityType, entityId) {
+  try {
+    // Check how many notifications were created in last hour
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    
+    const { count, error } = await supabaseAdmin
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('related_entity_type', entityType)
+      .eq('related_entity_id', entityId)
+      .gte('created_at', oneHourAgo);
+      
+    if (error) throw error;
+    
+    // Rate limit: 5 notifications per hour for the same entity
+    return count >= 5;
+  } catch (error) {
+    console.error('Error checking rate limit:', error);
+    // In case of error, don't rate limit
     return false;
   }
 }

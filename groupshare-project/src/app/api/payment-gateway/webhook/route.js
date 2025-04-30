@@ -121,24 +121,37 @@ export async function POST(request) {
             // Continue despite error - the purchase is still valid
           }
           
-          // Send notification to buyer using the more robust notification service
-          // This replaces the direct insertions that were causing duplication
-          await notificationService.createTransactionNotification(
-            transaction.buyer_id,
-            transactionId,
-            purchaseId,
-            'completed'
-          );
-          
-          // Send notification to seller
-          await notificationService.createNotification(
-            transaction.seller_id,
-            'sale_completed',
-            'Sprzedaż zakończona pomyślnie',
-            'Ktoś właśnie kupił miejsce w Twojej subskrypcji.',
-            'transaction',
-            transactionId
-          );
+          // Create a single consolidated notification instead of multiple
+          try {
+            await createConsolidatedPurchaseNotification(
+              transaction.buyer_id,
+              transaction.seller_id,
+              purchaseId,
+              transactionId
+            );
+          } catch (notificationError) {
+            console.error('Error creating notifications:', notificationError);
+            // Continue despite error - this is non-critical
+            
+            // Attempt direct fallback notification creation for critical user notification
+            try {
+              await supabaseAdmin
+                .from('notifications')
+                .insert({
+                  user_id: transaction.buyer_id,
+                  type: 'purchase_completed',
+                  title: 'Zakup zakończony pomyślnie',
+                  content: 'Twój zakup został potwierdzony. Możesz teraz uzyskać dostęp do subskrypcji.',
+                  related_entity_type: 'purchase_record',
+                  related_entity_id: purchaseId,
+                  priority: 'high',
+                  is_read: false,
+                  created_at: new Date().toISOString()
+                });
+            } catch (fallbackError) {
+              console.error('Fallback notification also failed:', fallbackError);
+            }
+          }
         } else {
           console.log(`Purchase ${purchaseId} already completed, skipping updates`);
         }
@@ -160,13 +173,39 @@ export async function POST(request) {
             })
             .eq('id', transaction.purchase_record_id);
           
-          // Send failure notification
-          await notificationService.createTransactionNotification(
-            transaction.buyer_id,
-            transactionId,
-            transaction.purchase_record_id,
-            'failed'
-          );
+          // Send failure notification with fallback mechanism
+          try {
+            await notificationService.createNotification(
+              transaction.buyer_id,
+              'purchase_failed',
+              'Płatność zakończona niepowodzeniem',
+              'Twoja płatność nie została zrealizowana. Możesz ponowić próbę w szczegółach zakupu.',
+              'purchase_record',
+              transaction.purchase_record_id,
+              'high'
+            );
+          } catch (notificationError) {
+            console.error('Error creating failure notification:', notificationError);
+            
+            // Direct fallback for critical notification
+            try {
+              await supabaseAdmin
+                .from('notifications')
+                .insert({
+                  user_id: transaction.buyer_id,
+                  type: 'purchase_failed',
+                  title: 'Płatność zakończona niepowodzeniem',
+                  content: 'Twoja płatność nie została zrealizowana. Możesz ponowić próbę w szczegółach zakupu.',
+                  related_entity_type: 'purchase_record',
+                  related_entity_id: transaction.purchase_record_id,
+                  priority: 'high',
+                  is_read: false,
+                  created_at: new Date().toISOString()
+                });
+            } catch (fallbackError) {
+              console.error('Fallback failure notification also failed:', fallbackError);
+            }
+          }
         }
       }
       
@@ -180,7 +219,45 @@ export async function POST(request) {
     }
 }
 
-// Helper functions
+/**
+ * Create a consolidated notification for purchase completion
+ * Replaces multiple separate notifications with a single comprehensive one
+ */
+async function createConsolidatedPurchaseNotification(buyerId, sellerId, purchaseId, transactionId) {
+  // Notification for buyer - more detailed since this is important
+  try {
+    await notificationService.createNotification(
+      buyerId,
+      'purchase_completed',
+      'Zakup zakończony pomyślnie',
+      'Twój zakup został potwierdzony. Możesz teraz uzyskać dostęp do subskrypcji z poziomu szczegółów zakupu.',
+      'purchase_record',
+      purchaseId,
+      'high', // High priority for buyer
+      0,      // No TTL
+      true    // Skip duplicate check - this is important
+    );
+  } catch (error) {
+    console.error('Error creating buyer notification:', error);
+    throw error; // Re-throw to trigger fallback
+  }
+  
+  // Notification for seller (less critical)
+  try {
+    await notificationService.createNotification(
+      sellerId,
+      'sale_completed',
+      'Sprzedaż zakończona pomyślnie',
+      'Ktoś właśnie kupił miejsce w Twojej subskrypcji.',
+      'purchase_record', // Point to purchase record instead of transaction for consistency
+      purchaseId,
+      'normal'
+    );
+  } catch (error) {
+    // Log but don't re-throw for seller notification (non-critical)
+    console.error('Error creating seller notification:', error);
+  }
+}
 
 // Generate access token
 async function generateAccessToken(purchaseId) {

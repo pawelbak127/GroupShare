@@ -35,25 +35,44 @@ class NotificationService {
 
       // Verify entity exists if entityId and entityType are provided
       if (relatedEntityId && relatedEntityType && !skipDuplicateCheck) {
-        const entityExists = await this.verifyEntityExists(relatedEntityType, relatedEntityId);
-        if (!entityExists) {
-          console.warn(`Entity ${relatedEntityType}:${relatedEntityId} does not exist. Skipping notification.`);
-          return null;
+        try {
+          const entityExists = await this.verifyEntityExists(relatedEntityType, relatedEntityId);
+          if (!entityExists) {
+            console.warn(`Entity ${relatedEntityType}:${relatedEntityId} does not exist. Skipping notification.`);
+            return null;
+          }
+        } catch (verifyError) {
+          console.warn(`Entity verification error for ${relatedEntityType}:${relatedEntityId}:`, verifyError);
+          // Log but don't block critical notifications
+          if (priority !== 'high') {
+            return null;
+          }
         }
       }
 
       // Check for similar recent notifications to avoid duplication
       if (!skipDuplicateCheck && relatedEntityType && relatedEntityId) {
-        const hasDuplicate = await this.checkForDuplicateNotification(
-          userId, 
-          type, 
-          relatedEntityType, 
-          relatedEntityId
-        );
-        
-        if (hasDuplicate) {
-          console.log(`Skipping duplicate notification: ${type} for ${relatedEntityType}:${relatedEntityId}`);
-          return null;
+        try {
+          // Use the advanced duplicate detection that considers content similarity
+          const hasDuplicate = await this.checkForDuplicateNotificationAdvanced(
+            userId, 
+            type, 
+            relatedEntityType, 
+            relatedEntityId,
+            title
+          );
+          
+          if (hasDuplicate) {
+            console.log(`Skipping duplicate notification: ${type} for ${relatedEntityType}:${relatedEntityId}`);
+            return null;
+          }
+        } catch (dupError) {
+          console.warn('Duplicate check error:', dupError);
+          // Don't block high priority notifications if duplicate check fails
+          if (priority !== 'high') {
+            console.log('Skipping notification due to duplicate check error');
+            return null;
+          }
         }
       }
 
@@ -91,6 +110,28 @@ class NotificationService {
             // Exponential backoff
             await new Promise(r => setTimeout(r, Math.pow(2, retryCount) * 100));
           } else {
+            // For high priority notifications, try direct DB insertion as final fallback
+            if (priority === 'high') {
+              try {
+                console.log('Attempting emergency direct insertion for high priority notification');
+                const { data: emergencyData, error: emergencyError } = await supabaseAdmin
+                  .from('notifications')
+                  .insert({
+                    ...notification,
+                    created_at: new Date().toISOString(), // Fresh timestamp
+                    _emergency_fallback: true // Mark as emergency insertion
+                  })
+                  .select()
+                  .single();
+                
+                if (!emergencyError) {
+                  console.log('Emergency notification insertion succeeded');
+                  return emergencyData;
+                }
+              } catch (emergencyError) {
+                console.error('Emergency notification insertion also failed:', emergencyError);
+              }
+            }
             throw insertError;
           }
         }
@@ -109,18 +150,46 @@ class NotificationService {
    */
   async verifyUserExists(userId) {
     try {
+      // Check cache first (optional optimization)
+      const cacheKey = `user_exists_${userId}`;
+      const cachedResult = this.getCache(cacheKey);
+      if (cachedResult !== undefined) {
+        return cachedResult;
+      }
+
       const { count, error } = await supabaseAdmin
         .from('user_profiles')
         .select('id', { count: 'exact', head: true })
         .eq('id', userId);
       
       if (error) throw error;
-      return count > 0;
+      
+      const exists = count > 0;
+      this.setCache(cacheKey, exists, 300); // Cache for 5 minutes
+      return exists;
     } catch (error) {
       console.error(`Error verifying user ${userId}:`, error);
       // Assume user exists if verification fails to ensure notification delivery
       return true;
     }
+  }
+
+  // Simple in-memory cache implementation
+  cache = {};
+  setCache(key, value, ttlSeconds = 60) {
+    this.cache[key] = {
+      value,
+      expires: Date.now() + (ttlSeconds * 1000)
+    };
+  }
+  getCache(key) {
+    const cached = this.cache[key];
+    if (!cached) return undefined;
+    if (cached.expires < Date.now()) {
+      delete this.cache[key];
+      return undefined;
+    }
+    return cached.value;
   }
 
   /**
@@ -350,6 +419,117 @@ class NotificationService {
   }
 
   /**
+   * Advanced check for similar notifications with content comparison
+   * @param {string} userId - User ID
+   * @param {string} type - Notification type
+   * @param {string} entityType - Entity type
+   * @param {string} entityId - Entity ID
+   * @param {string} title - Title to compare
+   * @param {number} timeWindowMinutes - Time window to check, default 30 min
+   * @returns {Promise<boolean>} Whether a similar notification exists
+   */
+  async checkForDuplicateNotificationAdvanced(
+    userId, 
+    type, 
+    entityType, 
+    entityId, 
+    title,
+    timeWindowMinutes = 30
+  ) {
+    try {
+      // Calculate time window
+      const timeWindow = new Date();
+      timeWindow.setMinutes(timeWindow.getMinutes() - timeWindowMinutes);
+      const timeWindowStr = timeWindow.toISOString();
+      
+      // Check for notifications in the time window
+      const { data, error } = await supabaseAdmin
+        .from('notifications')
+        .select('id, title, content, created_at')
+        .eq('user_id', userId)
+        .eq('type', type)
+        .eq('related_entity_type', entityType)
+        .eq('related_entity_id', entityId)
+        .gte('created_at', timeWindowStr)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      if (!data || data.length === 0) {
+        return false;
+      }
+      
+      // Check title similarity
+      const similarTitle = data.some(notification => {
+        // Normalize titles for comparison
+        const normalizedExisting = notification.title.toLowerCase().trim();
+        const normalizedNew = title.toLowerCase().trim();
+        
+        // Exact match
+        if (normalizedExisting === normalizedNew) {
+          return true;
+        }
+        
+        // Similarity match > 80%
+        if (this.calculateStringSimilarity(normalizedExisting, normalizedNew) > 0.8) {
+          return true;
+        }
+        
+        return false;
+      });
+      
+      return similarTitle;
+    } catch (error) {
+      console.error('Error in advanced duplicate check:', error);
+      // If check fails, assume no duplicate to ensure notification is sent
+      return false;
+    }
+  }
+
+  /**
+   * Calculate string similarity using Levenshtein distance
+   * @param {string} str1 - First string
+   * @param {string} str2 - Second string
+   * @returns {number} Similarity score between 0 and 1
+   */
+  calculateStringSimilarity(str1, str2) {
+    // Handle edge cases
+    if (str1 === str2) return 1.0;
+    if (!str1 || !str2) return 0.0;
+    
+    // Initialize the matrix
+    const track = Array(str2.length + 1).fill(null).map(() => 
+      Array(str1.length + 1).fill(null));
+    
+    for (let i = 0; i <= str1.length; i += 1) {
+      track[0][i] = i;
+    }
+    
+    for (let j = 0; j <= str2.length; j += 1) {
+      track[j][0] = j;
+    }
+    
+    // Fill the matrix
+    for (let j = 1; j <= str2.length; j += 1) {
+      for (let i = 1; i <= str1.length; i += 1) {
+        const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
+        track[j][i] = Math.min(
+          track[j][i - 1] + 1, // deletion
+          track[j - 1][i] + 1, // insertion
+          track[j - 1][i - 1] + indicator, // substitution
+        );
+      }
+    }
+    
+    // Calculate similarity
+    const maxLength = Math.max(str1.length, str2.length);
+    if (maxLength === 0) return 1.0; // Both strings are empty
+    
+    const levenshteinDistance = track[str2.length][str1.length];
+    return 1 - (levenshteinDistance / maxLength);
+  }
+
+  /**
    * Verify that an entity exists before sending a notification about it
    * @param {string} entityType - Type of entity
    * @param {string} entityId - ID of entity
@@ -357,6 +537,14 @@ class NotificationService {
    */
   async verifyEntityExists(entityType, entityId) {
     try {
+      // Check cache first for performance
+      const cacheKey = `entity_exists_${entityType}_${entityId}`;
+      const cachedResult = this.getCache(cacheKey);
+      if (cachedResult !== undefined) {
+        return cachedResult;
+      }
+
+      // Map entity type to database table
       let table;
       switch (entityType) {
         case 'group':
@@ -386,6 +574,7 @@ class NotificationService {
           return false;
       }
       
+      // Query the database
       const { count, error } = await supabaseAdmin
         .from(table)
         .select('id', { count: 'exact', head: true })
@@ -393,11 +582,15 @@ class NotificationService {
       
       if (error) throw error;
       
-      return count > 0;
+      const exists = count > 0;
+      this.setCache(cacheKey, exists, 300); // Cache for 5 minutes
+      return exists;
     } catch (error) {
       console.error(`Error verifying entity ${entityType}:${entityId}:`, error);
-      // If verification fails, assume entity exists to ensure notification is sent
-      return true;
+      
+      // Entity existence verification is very important, so we'll throw
+      // So the caller knows there was a problem with verification
+      throw new Error(`Entity verification failed: ${error.message}`);
     }
   }
 
@@ -418,8 +611,16 @@ class NotificationService {
     
     try {
       // Verify entity exists
+      let entityExists = true;
       if (relatedEntityType && relatedEntityId) {
-        const entityExists = await this.verifyEntityExists(relatedEntityType, relatedEntityId);
+        try {
+          entityExists = await this.verifyEntityExists(relatedEntityType, relatedEntityId);
+        } catch (verifyError) {
+          console.warn(`Entity verification error in bulk notifications:`, verifyError);
+          // Continue anyway for bulk notifications
+          entityExists = true;
+        }
+        
         if (!entityExists) {
           console.warn(`Entity ${relatedEntityType}:${relatedEntityId} does not exist. Skipping bulk notifications.`);
           return [];
@@ -438,14 +639,28 @@ class NotificationService {
         created_at: new Date().toISOString()
       }));
       
-      const { data, error } = await supabaseAdmin
-        .from('notifications')
-        .insert(notifications)
-        .select();
+      // Process in batches of 50 to prevent request size limits
+      const batchSize = 50;
+      const results = [];
       
-      if (error) throw error;
+      for (let i = 0; i < notifications.length; i += batchSize) {
+        const batch = notifications.slice(i, i + batchSize);
+        
+        try {
+          const { data, error } = await supabaseAdmin
+            .from('notifications')
+            .insert(batch)
+            .select();
+            
+          if (error) throw error;
+          if (data) results.push(...data);
+        } catch (batchError) {
+          console.error(`Error processing notification batch ${i / batchSize + 1}:`, batchError);
+          // Continue with next batch
+        }
+      }
       
-      return data || [];
+      return results;
     } catch (error) {
       console.error('Error creating bulk notifications:', error);
       // Don't throw - fail silently for notifications
@@ -480,7 +695,32 @@ class NotificationService {
       
       if (transactionError || !transaction) {
         console.error('Error fetching transaction for notification:', transactionError);
-        return null;
+        
+        // Fallback - try to get info from purchase record instead
+        const { data: purchase } = await supabaseAdmin
+          .from('purchase_records')
+          .select(`
+            group_sub:group_subs(
+              subscription_platforms(name)
+            )
+          `)
+          .eq('id', purchaseId)
+          .single();
+          
+        const platformName = purchase?.group_sub?.subscription_platforms?.name || 'subskrypcji';
+        
+        // Create notification with fallback content
+        return this.createNotification(
+          userId,
+          status === 'completed' ? 'purchase_completed' : 'purchase_update',
+          `Aktualizacja zakupu ${platformName}`,
+          `Status Twojego zakupu został zaktualizowany.`,
+          'purchase_record', // Use purchase_record instead of transaction as fallback
+          purchaseId,
+          status === 'failed' ? 'high' : 'normal',
+          0,
+          true // Skip duplicate check
+        );
       }
       
       // Determine notification content based on status
@@ -502,28 +742,53 @@ class NotificationService {
       }
       
       // Create notification with transaction as the related entity
-      return this.createNotification(
+      // and a reference to purchase record in the notification content
+      const notification = await this.createNotification(
         userId,
         type,
         title,
         content,
-        'transaction',
-        transactionId,
+        'purchase_record', // Use purchase_record as entity type for consistency
+        purchaseId,  // Now referencing purchase record directly for better frontend navigation
         status === 'failed' ? 'high' : 'normal',
         0,
         true // Skip duplicate check since we've already customized this
       );
+      
+      return notification;
     } catch (error) {
       console.error('Error creating transaction notification:', error);
-      // Fall back to basic notification
-      return this.createNotification(
-        userId,
-        'purchase',
-        'Aktualizacja zakupu',
-        'Twój zakup został zaktualizowany.',
-        'purchase_record',
-        purchaseId
-      );
+      
+      // Fall back to basic notification - critical for purchase notifications
+      try {
+        // Direct DB insert for critical notifications as final fallback
+        if (status === 'completed' || status === 'failed') {
+          const { data } = await supabaseAdmin
+            .from('notifications')
+            .insert({
+              user_id: userId,
+              type: status === 'completed' ? 'purchase_completed' : 'purchase_failed',
+              title: status === 'completed' ? 'Zakup zakończony pomyślnie' : 'Problem z zakupem',
+              content: status === 'completed' 
+                ? 'Twój zakup został pomyślnie zrealizowany. Możesz teraz uzyskać dostęp do instrukcji.'
+                : 'Wystąpił problem z Twoim zakupem. Sprawdź szczegóły płatności.',
+              related_entity_type: 'purchase_record',
+              related_entity_id: purchaseId,
+              priority: status === 'failed' ? 'high' : 'normal',
+              is_read: false,
+              created_at: new Date().toISOString(),
+              _emergency_fallback: true
+            })
+            .select()
+            .single();
+          
+          return data;
+        }
+      } catch (fallbackError) {
+        console.error('Emergency fallback notification also failed:', fallbackError);
+      }
+      
+      return null;
     }
   }
 
@@ -559,6 +824,10 @@ class NotificationService {
     try {
       // Convert single ID to array if needed
       const ids = Array.isArray(notificationIds) ? notificationIds : [notificationIds];
+      
+      if (ids.length === 0) {
+        return true; // Nothing to mark
+      }
       
       const { error } = await supabaseAdmin
         .from('notifications')
