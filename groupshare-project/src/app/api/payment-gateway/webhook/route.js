@@ -6,20 +6,13 @@ import crypto from 'crypto';
 
 export async function POST(request) {
     try {
-      // Verify payment provider signature
-      const signature = request.headers.get('x-payment-signature');
+      // Pobierz dane z webhook'a
       const payload = await request.json();
-      
-      // In a real implementation, verify webhook signature here
-      // if (!verifyPaymentWebhookSignature(payload, signature)) {
-      //   return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
-      // }
-      
       const { transactionId, status, paymentId } = payload;
       
-      console.log(`Processing payment webhook for transaction ${transactionId}, status: ${status}`);
+      console.log(`Przetwarzanie webhook'a płatności dla transakcji ${transactionId}, status: ${status}`);
       
-      // Update transaction
+      // Zaktualizuj transakcję
       await supabaseAdmin
         .from('transactions')
         .update({
@@ -30,11 +23,11 @@ export async function POST(request) {
         })
         .eq('id', transactionId);
       
-      // If payment is completed successfully
+      // Jeśli płatność została zakończona pomyślnie
       if (status === 'completed') {
-        console.log(`Payment completed for transaction ${transactionId}, updating records`);
+        console.log(`Płatność zakończona dla transakcji ${transactionId}, aktualizacja rekordów`);
         
-        // Fetch transaction with related purchase record
+        // Pobierz transakcję z powiązanym rekordem zakupu
         const { data: transaction, error: transactionError } = await supabaseAdmin
           .from('transactions')
           .select(`
@@ -51,19 +44,19 @@ export async function POST(request) {
           .single();
         
         if (transactionError || !transaction) {
-          console.error(`Transaction ${transactionId} not found or error:`, transactionError);
+          console.error(`Nie znaleziono transakcji ${transactionId}:`, transactionError);
           return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
         }
         
-        // Check if purchase is already marked as completed
+        // Sprawdź, czy zakup jest już oznaczony jako zakończony
         const purchaseId = transaction.purchase_record_id;
         const purchaseStatus = transaction.purchase?.status;
         
-        // Only update purchase if it's not already completed
+        // Zaktualizuj tylko jeśli zakup nie jest jeszcze zakończony
         if (purchaseStatus !== 'completed') {
-          console.log(`Updating purchase record ${purchaseId} to completed`);
+          console.log(`Aktualizuję rekord zakupu ${purchaseId} na zakończony`);
           
-          // Update purchase status
+          // Zaktualizuj status zakupu
           await supabaseAdmin
             .from('purchase_records')
             .update({
@@ -74,12 +67,12 @@ export async function POST(request) {
             })
             .eq('id', purchaseId);
           
-          // Decrement available slots only if not already done
+          // Zmniejsz dostępne sloty, jeśli jeszcze nie zostały zmniejszone
           if (!transaction.purchase?.slots_decremented) {
-            console.log(`Decrementing available slots for offer ${transaction.group_sub_id}`);
+            console.log(`Zmniejszam dostępne sloty dla oferty ${transaction.group_sub_id}`);
             
             try {
-              // First get current slots information
+              // Najpierw pobierz aktualne informacje o slotach
               const { data: offer } = await supabaseAdmin
                 .from('group_subs')
                 .select('slots_available, slots_total')
@@ -87,7 +80,7 @@ export async function POST(request) {
                 .single();
                 
               if (offer && typeof offer.slots_available === 'number' && offer.slots_available > 0) {
-                // Update slots available
+                // Zaktualizuj dostępne sloty
                 await supabaseAdmin
                   .from('group_subs')
                   .update({ 
@@ -96,67 +89,77 @@ export async function POST(request) {
                   })
                   .eq('id', transaction.group_sub_id);
                   
-                // Mark as decremented in purchase record
+                // Oznacz jako zmniejszone w rekordzie zakupu
                 await supabaseAdmin
                   .from('purchase_records')
                   .update({ slots_decremented: true })
                   .eq('id', purchaseId);
                   
-                console.log(`Slots decremented for offer ${transaction.group_sub_id}`);
-              } else {
-                console.warn(`No available slots to decrement for offer ${transaction.group_sub_id}`);
+                console.log(`Sloty zmniejszone dla oferty ${transaction.group_sub_id}`);
               }
             } catch (slotError) {
-              console.error('Error updating available slots:', slotError);
-              // Continue despite error - the purchase is still valid
+              console.error('Błąd aktualizacji dostępnych slotów:', slotError);
             }
           }
           
-          // Generate access token
+          // Wygeneruj token dostępu
           try {
             const token = await generateAccessToken(purchaseId);
-            console.log(`Access token generated for purchase ${purchaseId}`);
+            console.log(`Token dostępu wygenerowany dla zakupu ${purchaseId}`);
           } catch (tokenError) {
-            console.error('Error generating access token:', tokenError);
-            // Continue despite error - the purchase is still valid
+            console.error('Błąd generowania tokenu dostępu:', tokenError);
           }
           
-          // Create a single consolidated notification instead of multiple
+          // Pobierz nazwę platformy subskrypcyjnej
+          let platformName = 'subskrypcji';
           try {
-            await createConsolidatedPurchaseNotification(
-              transaction.buyer_id,
-              transaction.seller_id,
-              purchaseId,
-              transactionId
-            );
-          } catch (notificationError) {
-            console.error('Error creating notifications:', notificationError);
-            // Continue despite error - this is non-critical
+            const { data: subscriptionData } = await supabaseAdmin
+              .from('group_subs')
+              .select(`
+                subscription_platforms(name)
+              `)
+              .eq('id', transaction.group_sub_id)
+              .single();
             
-            // Attempt direct fallback notification creation for critical user notification
-            try {
-              await supabaseAdmin
-                .from('notifications')
-                .insert({
-                  user_id: transaction.buyer_id,
-                  type: 'purchase_completed',
-                  title: 'Zakup zakończony pomyślnie',
-                  content: 'Twój zakup został potwierdzony. Możesz teraz uzyskać dostęp do subskrypcji.',
-                  related_entity_type: 'purchase_record',
-                  related_entity_id: purchaseId,
-                  priority: 'high',
-                  is_read: false,
-                  created_at: new Date().toISOString()
-                });
-            } catch (fallbackError) {
-              console.error('Fallback notification also failed:', fallbackError);
+            if (subscriptionData?.subscription_platforms?.name) {
+              platformName = subscriptionData.subscription_platforms.name;
             }
+          } catch (error) {
+            console.warn('Nie udało się pobrać nazwy platformy:', error);
+          }
+          
+          // Wyślij powiadomienia
+          // 1. Powiadomienie dla kupującego
+          try {
+            await notificationService.createPaymentNotification(
+              transaction.buyer_id,
+              'completed', 
+              purchaseId,
+              platformName
+            );
+          } catch (error) {
+            console.error('Błąd tworzenia powiadomienia dla kupującego:', error);
+          }
+          
+          // 2. Powiadomienie dla sprzedającego
+          try {
+            await notificationService.createNotification(
+              transaction.seller_id,
+              'payment',
+              'Sprzedaż zakończona pomyślnie',
+              `Ktoś właśnie kupił miejsce w Twojej subskrypcji ${platformName}.`,
+              'purchase_record',
+              purchaseId,
+              'normal'
+            );
+          } catch (error) {
+            console.error('Błąd tworzenia powiadomienia dla sprzedającego:', error);
           }
         } else {
-          console.log(`Purchase ${purchaseId} already completed, skipping updates`);
+          console.log(`Zakup ${purchaseId} już zakończony, pomijam aktualizacje`);
         }
       } else if (status === 'failed') {
-        // Handle failed payment
+        // Obsługa nieudanej płatności
         const { data: transaction } = await supabaseAdmin
           .from('transactions')
           .select('purchase_record_id, buyer_id')
@@ -164,7 +167,7 @@ export async function POST(request) {
           .single();
           
         if (transaction) {
-          // Update purchase status
+          // Zaktualizuj status zakupu
           await supabaseAdmin
             .from('purchase_records')
             .update({
@@ -173,109 +176,46 @@ export async function POST(request) {
             })
             .eq('id', transaction.purchase_record_id);
           
-          // Send failure notification with fallback mechanism
+          // Wyślij powiadomienie o niepowodzeniu
           try {
-            await notificationService.createNotification(
+            await notificationService.createPaymentNotification(
               transaction.buyer_id,
-              'purchase_failed',
-              'Płatność zakończona niepowodzeniem',
-              'Twoja płatność nie została zrealizowana. Możesz ponowić próbę w szczegółach zakupu.',
-              'purchase_record',
-              transaction.purchase_record_id,
-              'high'
+              'failed',
+              transaction.purchase_record_id
             );
-          } catch (notificationError) {
-            console.error('Error creating failure notification:', notificationError);
-            
-            // Direct fallback for critical notification
-            try {
-              await supabaseAdmin
-                .from('notifications')
-                .insert({
-                  user_id: transaction.buyer_id,
-                  type: 'purchase_failed',
-                  title: 'Płatność zakończona niepowodzeniem',
-                  content: 'Twoja płatność nie została zrealizowana. Możesz ponowić próbę w szczegółach zakupu.',
-                  related_entity_type: 'purchase_record',
-                  related_entity_id: transaction.purchase_record_id,
-                  priority: 'high',
-                  is_read: false,
-                  created_at: new Date().toISOString()
-                });
-            } catch (fallbackError) {
-              console.error('Fallback failure notification also failed:', fallbackError);
-            }
+          } catch (error) {
+            console.error('Błąd tworzenia powiadomienia o niepowodzeniu:', error);
           }
         }
       }
       
       return NextResponse.json({ received: true });
     } catch (error) {
-      console.error('Payment webhook error:', error);
+      console.error('Błąd webhook płatności:', error);
       return NextResponse.json(
-        { error: 'Payment webhook processing failed', details: error.message },
+        { error: 'Przetwarzanie webhook płatności nie powiodło się', details: error.message },
         { status: 500 }
       );
     }
 }
 
-/**
- * Create a consolidated notification for purchase completion
- * Replaces multiple separate notifications with a single comprehensive one
- */
-async function createConsolidatedPurchaseNotification(buyerId, sellerId, purchaseId, transactionId) {
-  // Notification for buyer - more detailed since this is important
-  try {
-    await notificationService.createNotification(
-      buyerId,
-      'purchase_completed',
-      'Zakup zakończony pomyślnie',
-      'Twój zakup został potwierdzony. Możesz teraz uzyskać dostęp do subskrypcji z poziomu szczegółów zakupu.',
-      'purchase_record',
-      purchaseId,
-      'high', // High priority for buyer
-      0,      // No TTL
-      true    // Skip duplicate check - this is important
-    );
-  } catch (error) {
-    console.error('Error creating buyer notification:', error);
-    throw error; // Re-throw to trigger fallback
-  }
-  
-  // Notification for seller (less critical)
-  try {
-    await notificationService.createNotification(
-      sellerId,
-      'sale_completed',
-      'Sprzedaż zakończona pomyślnie',
-      'Ktoś właśnie kupił miejsce w Twojej subskrypcji.',
-      'purchase_record', // Point to purchase record instead of transaction for consistency
-      purchaseId,
-      'normal'
-    );
-  } catch (error) {
-    // Log but don't re-throw for seller notification (non-critical)
-    console.error('Error creating seller notification:', error);
-  }
-}
-
-// Generate access token
+// Funkcja generująca token dostępu
 async function generateAccessToken(purchaseId) {
   try {
-    // Generate token
+    // Wygeneruj token
     const token = crypto.randomBytes(32).toString('hex');
     
-    // Hash token
+    // Skrót tokenu
     const tokenHash = crypto
       .createHash('sha256')
       .update(token + (process.env.TOKEN_SALT || ''))
       .digest('hex');
     
-    // Set expiration date (30 minutes)
+    // Ustaw datę wygaśnięcia (30 minut)
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + 30);
     
-    // Save token in database
+    // Zapisz token w bazie danych
     const { data, error } = await supabaseAdmin
       .from('access_tokens')
       .insert({
@@ -294,7 +234,7 @@ async function generateAccessToken(purchaseId) {
     
     return { token, tokenId: data.id };
   } catch (error) {
-    console.error('Error generating access token:', error);
+    console.error('Błąd generowania tokenu dostępu:', error);
     throw error;
   }
 }

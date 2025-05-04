@@ -7,23 +7,19 @@ import {
   } from '@heroicons/react/24/outline';
 
 /**
- * Komponenty filtrów dla powiadomień
+ * Uproszczone filtry powiadomień dla MVP
  */
 const NotificationFilters = ({ initialFilters = {}, onFilterChange, onMarkAllAsRead }) => {
   const [filters, setFilters] = useState({
     type: initialFilters.type || '',
     read: initialFilters.read || '',
-    priority: initialFilters.priority || '',
   });
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Obsługa zmiany filtra
   const handleFilterChange = (field, value) => {
-    // Aktualizuj lokalny stan
     const newFilters = { ...filters, [field]: value };
     setFilters(newFilters);
-    
-    // Powiadom rodzica
     onFilterChange(newFilters);
   };
 
@@ -32,7 +28,6 @@ const NotificationFilters = ({ initialFilters = {}, onFilterChange, onMarkAllAsR
     const clearedFilters = {
       type: '',
       read: '',
-      priority: '',
     };
     
     setFilters(clearedFilters);
@@ -66,9 +61,9 @@ const NotificationFilters = ({ initialFilters = {}, onFilterChange, onMarkAllAsR
         </div>
       </div>
 
-      {/* Rozwinięty panel filtrów */}
+      {/* Uproszczony panel filtrów */}
       {isExpanded && (
-        <div className="px-4 py-4 border-t border-gray-200 bg-gray-50 grid grid-cols-1 gap-y-4 sm:grid-cols-3 sm:gap-x-6">
+        <div className="px-4 py-4 border-t border-gray-200 bg-gray-50 grid grid-cols-1 gap-y-4 sm:grid-cols-2 sm:gap-x-6">
           {/* Filtr typu */}
           <div>
             <label htmlFor="type-filter" className="block text-sm font-medium text-gray-700">
@@ -83,8 +78,9 @@ const NotificationFilters = ({ initialFilters = {}, onFilterChange, onMarkAllAsR
               <option value="">Wszystkie typy</option>
               <option value="invite">Zaproszenia</option>
               <option value="message">Wiadomości</option>
-              <option value="purchase">Zakupy</option>
-              <option value="dispute">Spory</option>
+              <option value="payment">Płatności</option>
+              <option value="access">Dostęp</option>
+              <option value="system">Systemowe</option>
             </select>
           </div>
 
@@ -105,26 +101,8 @@ const NotificationFilters = ({ initialFilters = {}, onFilterChange, onMarkAllAsR
             </select>
           </div>
 
-          {/* Filtr priorytetu */}
-          <div>
-            <label htmlFor="priority-filter" className="block text-sm font-medium text-gray-700">
-              Priorytet
-            </label>
-            <select
-              id="priority-filter"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              value={filters.priority}
-              onChange={(e) => handleFilterChange('priority', e.target.value)}
-            >
-              <option value="">Wszystkie priorytety</option>
-              <option value="high">Wysoki</option>
-              <option value="normal">Normalny</option>
-              <option value="low">Niski</option>
-            </select>
-          </div>
-
           {/* Przycisk czyszczenia filtrów */}
-          <div className="sm:col-span-3 flex justify-end">
+          <div className="sm:col-span-2 flex justify-end">
             <button
               type="button"
               className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"

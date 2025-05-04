@@ -8,30 +8,27 @@ export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/notifications
- * Fetch notifications for the logged-in user
+ * Pobierz powiadomienia dla zalogowanego użytkownika
  */
 export async function GET(request) {
   try {
-    // Check authentication
+    // Sprawdź autentykację
     const user = await currentUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get query parameters
+    // Pobierz parametry zapytania
     const { searchParams } = new URL(request.url);
     const options = {
       type: searchParams.get('type'),
       read: searchParams.get('read') === 'true' ? true : 
             searchParams.get('read') === 'false' ? false : null,
-      priority: searchParams.get('priority'),
       page: parseInt(searchParams.get('page') || '1'),
       pageSize: parseInt(searchParams.get('pageSize') || '10'),
-      relatedEntityType: searchParams.get('relatedEntityType'),
-      relatedEntityId: searchParams.get('relatedEntityId'),
     };
 
-    // Get user profile ID
+    // Pobierz ID profilu użytkownika
     const { data: userProfile } = await supabaseAdmin
       .from('user_profiles')
       .select('id')
@@ -42,7 +39,7 @@ export async function GET(request) {
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
     }
 
-    // Fetch notifications using the service
+    // Pobierz powiadomienia używając serwisu
     const result = await notificationService.getUserNotifications(userProfile.id, options);
 
     return NextResponse.json(result);
@@ -57,20 +54,20 @@ export async function GET(request) {
 
 /**
  * PATCH /api/notifications
- * Mark multiple notifications as read
+ * Oznacz wiele powiadomień jako przeczytane
  */
 export async function PATCH(request) {
   try {
-    // Check authentication
+    // Sprawdź autentykację
     const user = await currentUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get request body
+    // Pobierz body żądania
     const { ids, all = false, entityType, entityId } = await request.json();
 
-    // Get user profile ID
+    // Pobierz ID profilu użytkownika
     const { data: userProfile } = await supabaseAdmin
       .from('user_profiles')
       .select('id')
@@ -83,15 +80,15 @@ export async function PATCH(request) {
 
     let success = false;
     
-    // Handle different marking strategies
+    // Obsłuż różne strategie oznaczania
     if (all) {
-      // Mark all as read
+      // Oznacz wszystkie jako przeczytane
       success = await notificationService.markAllAsRead(userProfile.id);
     } else if (ids && ids.length > 0) {
-      // Mark specific notifications as read
+      // Oznacz konkretne powiadomienia jako przeczytane
       success = await notificationService.markAsRead(ids, userProfile.id);
     } else if (entityType && entityId) {
-      // Mark all notifications for a specific entity as read
+      // Oznacz wszystkie powiadomienia dla konkretnej encji jako przeczytane
       const { data: notifications } = await supabaseAdmin
         .from('notifications')
         .select('id')
@@ -104,7 +101,7 @@ export async function PATCH(request) {
         const notificationIds = notifications.map(n => n.id);
         success = await notificationService.markAsRead(notificationIds, userProfile.id);
       } else {
-        success = true; // No notifications to mark
+        success = true; // Brak powiadomień do oznaczenia
       }
     } else {
       return NextResponse.json(
@@ -132,20 +129,20 @@ export async function PATCH(request) {
 
 /**
  * DELETE /api/notifications
- * Delete multiple notifications
+ * Usuń wiele powiadomień
  */
 export async function DELETE(request) {
   try {
-    // Check authentication
+    // Sprawdź autentykację
     const user = await currentUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get request body
+    // Pobierz body żądania
     const { ids, all = false, read = false } = await request.json();
 
-    // Get user profile ID
+    // Pobierz ID profilu użytkownika
     const { data: userProfile } = await supabaseAdmin
       .from('user_profiles')
       .select('id')
@@ -159,7 +156,7 @@ export async function DELETE(request) {
     let result;
 
     if (all) {
-      // Delete all notifications for this user
+      // Usuń wszystkie powiadomienia tego użytkownika
       const { error } = await supabaseAdmin
         .from('notifications')
         .delete()
@@ -167,7 +164,7 @@ export async function DELETE(request) {
       
       result = !error;
     } else if (read) {
-      // Delete all read notifications
+      // Usuń wszystkie przeczytane powiadomienia
       const { error } = await supabaseAdmin
         .from('notifications')
         .delete()
@@ -176,7 +173,7 @@ export async function DELETE(request) {
       
       result = !error;
     } else if (ids && ids.length > 0) {
-      // Delete specific notifications
+      // Usuń konkretne powiadomienia
       const { error } = await supabaseAdmin
         .from('notifications')
         .delete()

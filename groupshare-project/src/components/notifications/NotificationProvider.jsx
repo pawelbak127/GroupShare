@@ -5,26 +5,23 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import NotificationRealtime from './NotificationRealtime';
 import { toast } from '@/lib/utils/notification';
-import { groupSimilarNotifications } from '@/lib/utils/notification';
 
-// Create notifications context
+// Utwórz kontekst powiadomień
 const NotificationContext = createContext(null);
 
 /**
- * Provider for the notification system
+ * Uproszczony provider dla systemu powiadomień (MVP)
  */
 export const NotificationProvider = ({ children }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState([]);
-  const [groupedNotifications, setGroupedNotifications] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(0);
-  const [isGroupingEnabled, setIsGroupingEnabled] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
   const { isSignedIn, isLoaded } = useUser();
 
-  // Fetch unread count
+  // Pobierz liczbę nieprzeczytanych powiadomień
   useEffect(() => {
     const fetchUnreadCount = async () => {
       if (!isSignedIn || !isLoaded) {
@@ -52,35 +49,25 @@ export const NotificationProvider = ({ children }) => {
     if (isLoaded) {
       fetchUnreadCount();
       
-      // Set up periodic refresh
+      // Ustaw okresowe odświeżanie
       const refreshInterval = setInterval(() => {
         if (isSignedIn) {
           fetchUnreadCount();
         }
-      }, 60000); // Refresh every minute
+      }, 60000); // Odświeżaj co minutę
       
       return () => clearInterval(refreshInterval);
     }
   }, [isSignedIn, isLoaded]);
 
-  // Apply grouping to notifications
-  useEffect(() => {
-    if (isGroupingEnabled && notifications.length > 0) {
-      const grouped = groupSimilarNotifications(notifications);
-      setGroupedNotifications(grouped);
-    } else {
-      setGroupedNotifications(notifications);
-    }
-  }, [notifications, isGroupingEnabled]);
-
-  // Fetch recent notifications (memoized)
+  // Pobierz ostatnie powiadomienia (zmemoryzowana funkcja)
   const fetchRecentNotifications = useCallback(async () => {
     if (!isSignedIn) return;
     
-    // Throttle refreshes to avoid excessive API calls
+    // Ogranicz odświeżanie, aby uniknąć zbyt wielu wywołań API
     const now = Date.now();
-    if (now - lastRefresh < 10000) { // 10 second cooldown
-      console.log('Throttling notification refresh');
+    if (now - lastRefresh < 10000) { // 10 sekund cooldown
+      console.log('Ograniczam odświeżanie powiadomień');
       return;
     }
     
@@ -102,31 +89,31 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [isSignedIn, lastRefresh]);
 
-  // Handle new notification
+  // Obsłuż nowe powiadomienie
   const handleNewNotification = useCallback((notification) => {
-    // Increase unread count
+    // Zwiększ licznik nieprzeczytanych
     setUnreadCount(prev => prev + 1);
     
-    // Add to notifications list
+    // Dodaj do listy powiadomień
     setNotifications(prev => {
-      // Check if already in list (avoid duplicates)
+      // Sprawdź, czy już jest na liście (unikaj duplikatów)
       const exists = prev.some(n => n.id === notification.id);
       if (exists) return prev;
       
-      // Add to start of list
+      // Dodaj na początek listy
       return [notification, ...prev.slice(0, 9)];
     });
     
-    // Show toast notification
+    // Pokaż toast z powiadomieniem
     const toastMessage = notification.title;
     toast.info(toastMessage, {
       duration: 5000,
       position: 'top-right',
       icon: '🔔',
       onClick: () => {
-        // Handle click on toast
+        // Obsłuż kliknięcie w toast
         try {
-          // Mark as read
+          // Oznacz jako przeczytane
           fetch(`/api/notifications/${notification.id}`, {
             method: 'PATCH',
             headers: {
@@ -135,9 +122,28 @@ export const NotificationProvider = ({ children }) => {
             body: JSON.stringify({ is_read: true }),
           });
           
-          // Navigate to appropriate page based on notification type
+          // Przekieruj do odpowiedniej strony na podstawie typu powiadomienia
           if (notification.related_entity_type && notification.related_entity_id) {
-            const link = getNotificationLink(notification);
+            let link;
+            
+            // Proste mapowanie typu encji na URL
+            switch (notification.related_entity_type) {
+              case 'purchase_record':
+                link = `/purchases/${notification.related_entity_id}/details?from_notification=true`;
+                break;
+              case 'conversation':
+                link = `/conversations/${notification.related_entity_id}?from_notification=true`;
+                break;
+              case 'group_invitation':
+                link = `/groups/invitations/${notification.related_entity_id}?from_notification=true`;
+                break;
+              case 'dispute':
+                link = `/disputes/${notification.related_entity_id}?from_notification=true`;
+                break;
+              default:
+                link = '/notifications';
+            }
+            
             if (link) router.push(link);
           }
         } catch (error) {
@@ -146,37 +152,37 @@ export const NotificationProvider = ({ children }) => {
       }
     });
     
-    // Refresh page if we're on the notifications page
+    // Odśwież stronę, jeśli jesteśmy na stronie powiadomień
     if (pathname === '/notifications') {
       router.refresh();
     }
   }, [pathname, router]);
 
-  // Handle notification update
+  // Obsłuż aktualizację powiadomienia
   const handleNotificationUpdate = useCallback((updatedNotification) => {
-    // Update local list
+    // Zaktualizuj lokalną listę
     setNotifications(prev => {
       const index = prev.findIndex(n => n.id === updatedNotification.id);
       if (index === -1) return prev;
       
-      // Create new array with updated notification
+      // Utwórz nową tablicę z zaktualizowanym powiadomieniem
       const newNotifications = [...prev];
       newNotifications[index] = updatedNotification;
       return newNotifications;
     });
     
-    // Update unread count if notification was marked as read
+    // Zaktualizuj licznik nieprzeczytanych, jeśli powiadomienie zostało oznaczone jako przeczytane
     if (updatedNotification.is_read) {
       setUnreadCount(prev => Math.max(0, prev - 1));
     }
     
-    // Refresh page if we're on the notifications page
+    // Odśwież stronę, jeśli jesteśmy na stronie powiadomień
     if (pathname === '/notifications') {
       router.refresh();
     }
   }, [pathname, router]);
 
-  // Mark all as read (memoized)
+  // Oznacz wszystkie jako przeczytane (zmemoryzowana funkcja)
   const markAllAsRead = useCallback(async () => {
     if (!isSignedIn) return false;
     
@@ -193,11 +199,11 @@ export const NotificationProvider = ({ children }) => {
         throw new Error('Failed to mark notifications as read');
       }
       
-      // Update state
+      // Zaktualizuj stan
       setUnreadCount(0);
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       
-      // Refresh page if we're on the notifications page
+      // Odśwież stronę, jeśli jesteśmy na stronie powiadomień
       if (pathname === '/notifications') {
         router.refresh();
       }
@@ -210,22 +216,14 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [isSignedIn, pathname, router]);
 
-  // Toggle grouping
-  const toggleGrouping = useCallback(() => {
-    setIsGroupingEnabled(prev => !prev);
-  }, []);
-
-  // Context value
+  // Wartość kontekstu
   const value = {
     unreadCount,
     setUnreadCount,
-    notifications: groupedNotifications, // Use grouped notifications
-    rawNotifications: notifications, // Original ungrouped notifications
+    notifications,
     isLoading,
     fetchRecentNotifications,
-    markAllAsRead,
-    isGroupingEnabled,
-    toggleGrouping
+    markAllAsRead
   };
 
   return (
@@ -241,7 +239,7 @@ export const NotificationProvider = ({ children }) => {
 };
 
 /**
- * Hook to use the notifications context
+ * Hook do użycia kontekstu powiadomień
  */
 export const useNotifications = () => {
   const context = useContext(NotificationContext);
